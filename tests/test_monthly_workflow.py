@@ -14,8 +14,10 @@ import streamlit_app.engine as engine
 from streamlit_app.engine import (
     category_history,
     prior_month_comparison,
+    resolved_market,
     validate_market_data,
     validate_snapshot_history,
+    yahoo_symbol,
 )
 
 
@@ -47,6 +49,35 @@ class MonthlyWorkflowTests(unittest.TestCase):
         normalized = normalize_holdings(frame)
         self.assertEqual(normalized.iloc[0]["ticker"], "CASH")
         self.assertEqual(normalized.iloc[0]["shares"], 1_250_000)
+
+    def test_english_us_ticker_is_not_converted_to_korean_symbol(self):
+        self.assertEqual(resolved_market("QQQ", "KR"), "US")
+        self.assertEqual(yahoo_symbol("QQQ", "KR"), "QQQ")
+        self.assertEqual(yahoo_symbol("360750", "KR"), "360750.KS")
+
+    def test_english_ticker_uses_usd_fx_and_cash_price_is_one(self):
+        source = holdings([
+            ["A", "계좌", "QQQ", "나스닥", "KR", "선진국 주식", "", 50, 1],
+            ["A", "계좌", "CASH", "현금", "KR", "현금", "", 50, 1000],
+        ])
+        index = pd.date_range("2025-01-31", periods=14, freq="ME")
+        original = engine._series
+        def fake_series(ticker, market, *args, **kwargs):
+            if ticker == "KRW=X":
+                return pd.Series([1300.0, 1350.0], index=index[-2:])
+            self.assertEqual((ticker, market), ("QQQ", "US"))
+            return pd.Series(range(100, 114), index=index, dtype=float)
+        engine._series = fake_series
+        try:
+            priced, warnings = engine.enrich_prices(source, date(2026, 2, 28))
+        finally:
+            engine._series = original
+        self.assertFalse(warnings)
+        qqq = priced[priced["ticker"] == "QQQ"].iloc[0]
+        cash = priced[priced["ticker"] == "CASH"].iloc[0]
+        self.assertEqual(qqq["fx"], 1350)
+        self.assertEqual(cash["close"], 1)
+        self.assertEqual(cash["fx"], 1)
 
     def test_market_validation_blocks_missing_price_and_fx(self):
         priced = pd.DataFrame([
