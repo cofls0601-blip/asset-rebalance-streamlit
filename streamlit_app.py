@@ -23,14 +23,24 @@ from streamlit_app.templates import TEMPLATES, apply_template
 from streamlit_app.studio import render as render_studio
 from streamlit_app.rules import evaluate as evaluate_spec
 import importlib
+import inspect
 import streamlit_app.engine as allocation_engine
 
-# Streamlit Community Cloud can keep imported modules alive while pulling a new
-# commit.  Reload the calculation engine when a newly deployed symbol is not yet
-# present in that process, so the UI and engine can never run as mixed versions.
+# Check the call contract too: a cached engine can contain every function name
+# while still exposing the old three-argument build_action_plan implementation.
 required_engine_symbols = {"validate_configuration", "validate_market_data", "validate_snapshot_history", "prior_month_comparison", "category_history"}
-if not required_engine_symbols.issubset(set(dir(allocation_engine))):
+def engine_is_compatible(module):
+    planner = getattr(module, 'build_action_plan', None)
+    return (required_engine_symbols.issubset(set(dir(module))) and callable(planner)
+            and 'signal_fetch' in inspect.signature(planner).parameters)
+
+
+if not engine_is_compatible(allocation_engine):
+    importlib.invalidate_caches()
     allocation_engine = importlib.reload(allocation_engine)
+if not engine_is_compatible(allocation_engine):
+    st.error('배포 파일의 버전이 일치하지 않습니다. 최신 코드 반영 후 Streamlit Manage app에서 Reboot app을 실행해 주세요.')
+    st.stop()
 
 build_action_plan = allocation_engine.build_action_plan
 comparison_history = allocation_engine.comparison_history
