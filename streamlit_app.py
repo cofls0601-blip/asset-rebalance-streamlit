@@ -49,11 +49,11 @@ st.set_page_config(page_title="월말 자산배분 도우미", page_icon="📊",
 px.defaults.template = "plotly_dark"
 px.defaults.color_discrete_sequence = ["#f7931a", "#38bdf8", "#22c55e", "#eab308", "#a78bfa", "#ef4444", "#7a8494"]
 st.markdown("""<style>
-:root{--bg:#0a0d12;--bg1:#0e1218;--bg2:#111621;--bg3:#161c2a;--hover:#1a2130;--line:#1e2533;--line2:#2a3346;--text:#d8dee9;--muted:#7a8494;--dim:#4a5262;--accent:#f7931a;--accent-soft:#f7931a26;--up:#22c55e;--down:#ef4444;--warn:#eab308;--info:#38bdf8;--mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+:root{--bg:#0f172a;--bg1:#131d30;--bg2:#18243a;--bg3:#22314c;--hover:#293a58;--line:#344661;--line2:#4b607d;--text:#f8fafc;--muted:#c7d2e3;--dim:#94a3b8;--accent:#f59e0b;--accent-soft:#f59e0b26;--up:#4ade80;--down:#fb7185;--warn:#facc15;--info:#38bdf8;--mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 html,body,[class*="css"]{font-family:var(--sans)}
 .stApp{background:var(--bg);color:var(--text)}
 .block-container{max-width:1440px;padding-top:.8rem;padding-bottom:4rem}
-header[data-testid="stHeader"]{background:rgba(10,13,18,.88);border-bottom:1px solid var(--line)}
+header[data-testid="stHeader"]{background:rgba(15,23,42,.94);border-bottom:1px solid var(--line)}
 section[data-testid="stSidebar"]{background:var(--bg1);border-right:1px solid var(--line)}
 section[data-testid="stSidebar"] *{color:var(--text)}
 section[data-testid="stSidebar"] h2,section[data-testid="stSidebar"] h3{font-family:var(--mono);font-size:.72rem!important;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)!important}
@@ -87,6 +87,8 @@ div[data-testid="stDataFrame"],div[data-testid="stDataEditor"]{border:1px solid 
 code{font-family:var(--mono);color:var(--accent);background:var(--bg1)!important}
 h1,h2,h3,h4{letter-spacing:-.025em;color:var(--text)}
 h2,h3{font-weight:620}.stCaptionContainer,p{color:var(--muted)}
+label,[data-testid="stWidgetLabel"] p,.stMarkdown,.stMarkdown p{color:var(--text)}
+[data-baseweb="popover"],[role="listbox"]{background:var(--bg2)!important;color:var(--text)!important}
 hr{border-color:var(--line)!important}
 @media(max-width:760px){.block-container{padding:.55rem}.stButton>button{width:100%}.terminal-topbar{gap:8px;overflow:hidden}.terminal-topbar .optional{display:none}.app-hero{padding:15px}.app-hero .title{font-size:1.16rem}.stTabs [data-baseweb="tab-list"]{overflow-x:auto}}
 </style>""", unsafe_allow_html=True)
@@ -304,6 +306,22 @@ with tab_dashboard:
     categories["괴리(%p)"] = categories["비중"] - categories["목표비중"]
     st.dataframe(categories, use_container_width=True, hide_index=True)
 
+    monitor_col, runs_col = st.columns(2)
+    with monitor_col:
+        st.subheader("시장 모니터")
+        monitor = view.loc[view["ticker"] != "CASH", ["ticker", "name", "close", "price_date", "price_status", "momentum12"]].drop_duplicates("ticker")
+        monitor = monitor.rename(columns={"ticker":"티커", "name":"종목", "close":"종가", "price_date":"가격일", "price_status":"상태", "momentum12":"12개월 모멘텀"})
+        st.dataframe(monitor.style.format({"종가":"{:,.0f}", "12개월 모멘텀":"{:.2%}"}, na_rep="—"), use_container_width=True, hide_index=True)
+    with runs_col:
+        st.subheader("최근 실행 기록")
+        recent = st.session_state.actions.copy()
+        if recent.empty:
+            st.info("아직 누적한 실행 기록이 없습니다.")
+        else:
+            if "date" in recent.columns:
+                recent = recent.sort_values("date", ascending=False)
+            st.dataframe(recent.head(8), use_container_width=True, hide_index=True)
+
 with tab_plan:
     st.subheader("이번 달 액션 플랜")
     st.caption("계획은 참고값입니다. 주문 전 가격·세금·수수료와 실제 주문 가능 수량을 확인하세요.")
@@ -403,6 +421,12 @@ with tab_settings:
         "drawdown_shift": "낙폭 비중전환", "hold": "보유 유지", "visual": "노코드 조건 규칙",
     }
     strategy_codes = strategies["code"].astype(str).tolist()
+    strategy_search = st.text_input("전략 검색", placeholder="코드 또는 계좌명")
+    registry = strategies[[column for column in ["code", "account", "rule", "version", "active"] if column in strategies.columns]].copy()
+    if strategy_search:
+        mask = registry.astype(str).apply(lambda column: column.str.contains(strategy_search, case=False, na=False)).any(axis=1)
+        registry = registry[mask]
+    st.dataframe(registry, use_container_width=True, hide_index=True)
     selected = st.selectbox("설정할 전략", strategy_codes)
     current = strategies.loc[strategies["code"].astype(str) == selected].iloc[0]
     c1, c2 = st.columns(2)
@@ -454,16 +478,20 @@ with tab_settings:
         params["hold_note"] = st.text_input("표시 메모", str(params.get("hold_note", "매매 없음")))
     elif rule == "visual":
         st.caption("조건을 문장처럼 구성합니다. 값이 없으면 안전하게 보유 유지로 판정합니다.")
-        metric_names = {"sma_deviation":"SMA 대비", "momentum":"모멘텀", "drawdown":"낙폭", "price":"현재 가격"}
-        action_names = {"target":"목표비중 복원", "hold":"그대로 유지", "cash":"전량 현금화", "buy_fraction":"현금에서 일부 매수", "winner":"모멘텀 1위 집중"}
+        metric_names = {"sma_deviation":"SMA 대비", "ema_deviation":"EMA 대비", "momentum":"모멘텀", "drawdown":"낙폭", "price":"현재 가격", "relative_price":"두 티커 가격 비율", "schedule":"실행 일정"}
+        action_names = {"target":"목표비중 복원", "hold":"그대로 유지", "cash":"전량 현금화", "buy_fraction":"현금에서 일부 매수", "winner":"모멘텀 1위 집중", "move_all":"특정 티커로 전환", "set_weight":"특정 티커 비중 설정", "trigger_only":"트리거만 기록", "notify":"알림만 기록"}
+        scope1, scope2 = st.columns(2)
+        params["scope_market"] = scope1.selectbox("규칙 시장 범위", ["전체", "KR", "US"], index=["전체", "KR", "US"].index(params.get("scope_market", "전체")) if params.get("scope_market", "전체") in ["전체", "KR", "US"] else 0)
+        params["run_frequency"] = scope2.selectbox("실행 주기", ["daily", "monthly", "quarterly", "yearly"], index=["daily", "monthly", "quarterly", "yearly"].index(params.get("run_frequency", "monthly")) if params.get("run_frequency", "monthly") in ["daily", "monthly", "quarterly", "yearly"] else 1)
         conditions = params.get("conditions") or [{"ticker":"", "market":"KR", "metric":"sma_deviation", "period":10, "operator":">", "threshold":0.0}]
-        condition_frame = pd.DataFrame(conditions).reindex(columns=["ticker","market","metric","period","operator","threshold"])
+        condition_frame = pd.DataFrame(conditions).reindex(columns=["ticker","market","metric","period","compare_ticker","schedule","operator","threshold"])
         condition_frame = st.data_editor(condition_frame, num_rows="dynamic", use_container_width=True, hide_index=True,
             column_config={"market":st.column_config.SelectboxColumn(options=["KR","US"]),
                            "metric":st.column_config.SelectboxColumn(options=list(metric_names)),
+                           "schedule":st.column_config.SelectboxColumn(options=["daily","monthly","quarterly","yearly"]),
                            "operator":st.column_config.SelectboxColumn(options=[">",">=","<","<="]),
                            "period":st.column_config.NumberColumn(min_value=1, max_value=500)})
-        params["conditions"] = [row for row in condition_frame.fillna("").to_dict("records") if str(row.get("ticker", "")).strip()]
+        params["conditions"] = [row for row in condition_frame.fillna("").to_dict("records") if str(row.get("ticker", "")).strip() or row.get("metric") == "schedule"]
         params["combine"] = st.radio("조건 결합", ["AND","OR"], horizontal=True, index=0 if params.get("combine","AND") == "AND" else 1)
         ac1, ac2 = st.columns(2)
         actions = list(action_names)
@@ -472,8 +500,11 @@ with tab_settings:
         params["on_fail"] = ac2.selectbox("조건 미충족 시", actions, index=actions.index(fail_value) if fail_value in actions else 1, format_func=action_names.get)
         candidates = holdings.loc[(holdings["strategy"].astype(str) == selected) & (holdings["ticker"].astype(str) != "CASH"), "ticker"].astype(str).tolist()
         if candidates:
-            params["target_ticker"] = st.selectbox("일부 매수 대상", candidates, index=candidates.index(params.get("target_ticker")) if params.get("target_ticker") in candidates else 0)
+            params["target_ticker"] = st.selectbox("동작 대상 티커", candidates, index=candidates.index(params.get("target_ticker")) if params.get("target_ticker") in candidates else 0)
         params["buy_fraction"] = st.slider("현금 투입 비율", 0.0, 1.0, float(params.get("buy_fraction", .5)), .05)
+        params["target_pct"] = st.slider("동작 대상 목표비중(%)", 0, 100, int(params.get("target_pct", 50)), 1)
+        condition_preview = f"{params['combine']} 조건 {len(params['conditions'])}개 → 충족: {action_names.get(params['on_pass'])} / 미충족: {action_names.get(params['on_fail'])}"
+        st.code(condition_preview, language=None)
 
     if st.button("전략 규칙 적용", type="primary"):
         updated = st.session_state.strategies.copy()
