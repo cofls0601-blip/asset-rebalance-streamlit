@@ -8,10 +8,28 @@ import pandas as pd
 import yfinance as yf
 
 
+def resolved_market(ticker: str, market: str) -> str:
+    """Infer the actual exchange for symbols entered with an incorrect market.
+
+    English Yahoo symbols such as QQQ, SPY, ^GSPC and KRW=X must never be
+    converted to a Korean six-digit symbol. Korean exchange suffixes remain KR.
+    """
+    symbol = str(ticker).strip().upper()
+    if symbol == "CASH":
+        return "CASH"
+    if symbol.endswith((".KS", ".KQ")):
+        return "KR"
+    if any(char.isalpha() for char in symbol) or symbol.startswith("^") or "=" in symbol:
+        return "US"
+    return str(market or "KR").strip().upper()
+
+
 def yahoo_symbol(ticker: str, market: str) -> str:
+    ticker = str(ticker).strip().upper()
+    actual_market = resolved_market(ticker, market)
     if ticker == "CASH":
         return ticker
-    if market == "KR" and "." not in ticker:
+    if actual_market == "KR" and ticker.isdigit() and "." not in ticker:
         return f"{ticker.zfill(6)}.KS"
     return ticker
 
@@ -57,12 +75,13 @@ def enrich_prices(holdings: pd.DataFrame, as_of: date, adjusted: bool = False,
             _, rule_params = _params(strategies, str(row["strategy"])) if strategies is not None else ("static", {})
             sma_period = max(2, int(rule_params.get("sma_months", 10)))
             out.at[idx, "sma_period"] = sma_period
-            prices = _series(ticker, str(row["market"]), as_of, adjusted)
+            actual_market = resolved_market(ticker, str(row["market"]))
+            prices = _series(ticker, actual_market, as_of, adjusted)
             if prices.empty:
                 raise ValueError("종가 데이터 없음")
             out.at[idx, "close"] = float(prices.iloc[-1])
             out.at[idx, "price_date"] = pd.Timestamp(prices.index[-1]).tz_localize(None) if getattr(prices.index[-1], "tzinfo", None) else pd.Timestamp(prices.index[-1])
-            if row["market"] == "US":
+            if actual_market == "US":
                 if usdkrw <= 0:
                     raise ValueError("원/달러 환율 데이터 없음")
                 out.at[idx, "fx"] = usdkrw
@@ -118,6 +137,13 @@ def _condition_value(condition: dict, sub: pd.DataFrame, as_of: date) -> float |
     except (TypeError, ValueError):
         period = 10
     row = sub[sub["ticker"].astype(str).eq(ticker)] if ticker else pd.DataFrame()
+    if metric == "schedule":
+        cadence = str(condition.get("schedule", "monthly"))
+        is_month_end = (pd.Timestamp(as_of) + pd.offsets.MonthEnd(0)).date() == as_of
+        due = cadence == "daily" or (cadence == "monthly" and is_month_end)
+        due = due or (cadence == "quarterly" and is_month_end and as_of.month in {3, 6, 9, 12})
+        due = due or (cadence == "yearly" and is_month_end and as_of.month == 12)
+        return 1.0 if due else 0.0
     if metric == "price" and not row.empty:
         return float(row.iloc[0]["close"])
     if metric == "sma_deviation" and not row.empty and period == int(row.iloc[0].get("sma_period", 10)):
@@ -127,6 +153,14 @@ def _condition_value(condition: dict, sub: pd.DataFrame, as_of: date) -> float |
         return float(row.iloc[0]["momentum12"])
     if metric == "drawdown" and not row.empty and period == 120 and pd.notna(row.iloc[0].get("drawdown120")):
         return float(row.iloc[0]["drawdown120"])
+    if metric == "relative_price":
+        compare_ticker = str(condition.get("compare_ticker", "")).strip()
+        compare_market = str(condition.get("compare_market", condition.get("market", "US")))
+        left = _series(ticker, str(condition.get("market", "US")), as_of)
+        right = _series(compare_ticker, compare_market, as_of) if compare_ticker else pd.Series(dtype=float)
+        if not left.empty and not right.empty and float(right.iloc[-1]):
+            return float(left.iloc[-1] / right.iloc[-1])
+        return None
     if not ticker:
         return None
     series = _series(ticker, str(condition.get("market", "KR")), as_of)
@@ -134,11 +168,14 @@ def _condition_value(condition: dict, sub: pd.DataFrame, as_of: date) -> float |
         return None
     if metric == "price":
         return float(series.iloc[-1])
-    if metric in {"sma_deviation", "momentum"}:
+    if metric in {"sma_deviation", "ema_deviation", "momentum"}:
         monthly = series.resample("ME").last()
         if metric == "sma_deviation" and len(monthly) >= period:
             sma = float(monthly.tail(period).mean())
             return float(monthly.iloc[-1] / sma - 1) if sma else None
+        if metric == "ema_deviation" and len(monthly) >= period:
+            ema = float(monthly.ewm(span=period, adjust=False).mean().iloc[-1])
+            return float(monthly.iloc[-1] / ema - 1) if ema else None
         if metric == "momentum" and len(monthly) > period:
             return float(monthly.iloc[-1] / monthly.iloc[-period - 1] - 1)
     if metric == "drawdown" and len(series) >= min(20, period):
@@ -211,9 +248,18 @@ def validate_configuration(holdings: pd.DataFrame, strategies: pd.DataFrame) -> 
             conditions = params.get("conditions", [])
             if not conditions:
                 warnings.append(f"{code}: 시각 규칙에 조건이 없습니다.")
+            for condition in conditions:
+                if condition.get("metric") == "relative_price" and not str(condition.get("compare_ticker", "")).strip():
+                    warnings.append(f"{code}: 두 티커 가격 비율 조건에 비교 티커가 없습니다.")
+                if condition.get("metric") == "schedule" and condition.get("schedule") not in {"daily", "monthly", "quarterly", "yearly"}:
+                    warnings.append(f"{code}: 실행 일정 조건을 선택하세요.")
             if (params.get("on_pass") in {"cash", "buy_fraction", "winner"} or
                     params.get("on_fail") in {"cash", "buy_fraction", "winner"}) and "CASH" not in set(group["ticker"].astype(str)):
                 warnings.append(f"{code}: 선택한 시각 규칙 동작에 CASH 행이 필요합니다.")
+            if params.get("on_pass") == "set_weight" or params.get("on_fail") == "set_weight":
+                target_pct = float(params.get("target_pct", 50))
+                if not 0 <= target_pct <= 100:
+                    warnings.append(f"{code}: 동작 대상 목표비중은 0~100이어야 합니다.")
     return warnings
 
 
@@ -257,7 +303,7 @@ def validate_market_data(priced: pd.DataFrame, as_of: date, max_stale_days: int 
                 errors.append(f"{row.strategy}/{ticker}: 기준일 이후 가격이 사용되었습니다.")
             elif age > max_stale_days:
                 warnings.append(f"{row.strategy}/{ticker}: 가격이 {age}일 전({price_date.date()}) 데이터입니다.")
-        if str(getattr(row, "market", "KR")) == "US":
+        if resolved_market(ticker, str(getattr(row, "market", "KR"))) == "US":
             fx_value = pd.to_numeric(pd.Series([getattr(row, "fx", np.nan)]), errors="coerce").iloc[0]
             if pd.isna(fx_value) or float(fx_value) <= 0:
                 errors.append(f"{row.strategy}/{ticker}: 원/달러 환율이 없습니다.")
@@ -421,8 +467,22 @@ def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date)
                         target_values["CASH"] = total - sum(target_values.values())
                 elif "CASH" in target_values:
                     target_values["CASH"] = total
+            elif action in {"move_all", "set_weight"}:
+                selected = str(params.get("target_ticker", "CASH"))
+                pct = 100.0 if action == "move_all" else float(params.get("target_pct", 50))
+                pct = min(100.0, max(0.0, pct))
+                if selected in target_values:
+                    selected_value = total * pct / 100
+                    others = [ticker for ticker in target_values if ticker != selected]
+                    other_current = sum(float(target_values[ticker]) for ticker in others)
+                    target_values[selected] = selected_value
+                    remainder = total - selected_value
+                    for ticker in others:
+                        target_values[ticker] = remainder * float(target_values[ticker]) / other_current if other_current else remainder / max(1, len(others))
             label = {"target":"목표비중 복원", "hold":"그대로 유지", "cash":"전량 현금화",
-                     "buy_fraction":"현금 일부 매수", "winner":"모멘텀 1위 집중"}.get(action, action)
+                     "buy_fraction":"현금 일부 매수", "winner":"모멘텀 1위 집중",
+                     "move_all":"특정 티커로 이동", "set_weight":"목표비중 조정",
+                     "trigger_only":"트리거만 기록", "notify":"알림만 기록"}.get(action, action)
             notes = {str(r.ticker): f"시각 규칙: {label} · {detail}" for r in sub.itertuples()}
 
         for r in sub.itertuples():
@@ -431,7 +491,7 @@ def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date)
             unit_krw = float(r.close) * float(r.fx)
             if unit_krw > 0 and r.ticker != "CASH":
                 raw_qty = amount / unit_krw
-                qty = float(round(raw_qty)) if str(r.market) == "KR" else round(raw_qty, 4)
+                qty = float(round(raw_qty)) if resolved_market(str(r.ticker), str(r.market)) == "KR" else round(raw_qty, 4)
                 qty = max(qty, -float(r.shares))
             else:
                 qty = 0.0
