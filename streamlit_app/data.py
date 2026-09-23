@@ -219,6 +219,10 @@ def next_holdings_after_execution(holdings: pd.DataFrame, executed_plan: pd.Data
         if updated_cash < -1:
             warnings.append(f"{strategy}: 체결 반영 후 현금이 {updated_cash:,.0f}원으로 음수가 됩니다.")
         next_holdings.loc[mask, "shares"] = max(0.0, updated_cash)
+    if warnings:
+        # Apply an execution batch atomically; never drop cash deficits or
+        # partially update holdings when another fill cannot be represented.
+        return normalize_holdings(holdings), warnings
     return next_holdings, warnings
 
 
