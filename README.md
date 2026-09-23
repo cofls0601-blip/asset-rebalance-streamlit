@@ -6,6 +6,11 @@ Google Cloud나 별도 데이터베이스 없이 사용하는 독립형 Streamli
 
 ## 주요 기능
 
+새 작업 공간: Overview / Strategies / Studio / Signals / Rebalance / Portfolio / History / Data / Close.
+원본 대비 구현 범위와 계산 규약은 [기능 명세](docs/FEATURE_SPEC.md)에 기록했습니다.
+Studio는 11종 조건·8종 동작, 충족/미충족 별도 파라미터, 모멘텀 1위 참조,
+실행 일정과 실제 주문안 미리보기를 지원합니다. 기존 전략은 명시적으로 적용하기 전까지 보존됩니다.
+
 - 전략별 현재 비중, 목표 비중, 괴리와 상태색 대시보드
 - 정적 비중, SMA 필터, 모멘텀, 낙폭 매수, 낙폭 비중전환, 장기보유 규칙
 - SMA·모멘텀·낙폭·현재가를 조합하는 노코드 조건 규칙
