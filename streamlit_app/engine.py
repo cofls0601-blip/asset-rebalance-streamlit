@@ -6,6 +6,7 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from streamlit_app.rules import evaluate as evaluate_spec
 
 
 def resolved_market(ticker: str, market: str) -> str:
@@ -36,7 +37,7 @@ def yahoo_symbol(ticker: str, market: str) -> str:
 
 def _series(ticker: str, market: str, as_of: date, adjusted: bool = False) -> pd.Series:
     end = as_of + timedelta(days=1)
-    start = as_of - timedelta(days=620)
+    start = as_of - timedelta(days=1600)
     data = yf.download(yahoo_symbol(ticker, market), start=start, end=end, auto_adjust=False, progress=False, threads=False)
     if data.empty:
         return pd.Series(dtype=float)
@@ -59,10 +60,15 @@ def enrich_prices(holdings: pd.DataFrame, as_of: date, adjusted: bool = False,
     out["fx_date"] = pd.NaT
     out["price_status"] = "미조회"
     warnings: list[str] = []
-    fx = _series("KRW=X", "US", as_of)
+    try:
+        fx = _series("KRW=X", "US", as_of)
+    except Exception as exc:
+        fx = pd.Series(dtype=float)
+        warnings.append(f'환율 조회 실패: {exc}')
     usdkrw = float(fx.iloc[-1]) if not fx.empty else 0.0
     for idx, row in out.iterrows():
-        ticker = str(row["ticker"]).strip()
+        ticker = str(row["ticker"]).strip().upper()
+        out.at[idx, "ticker"] = ticker
         if not ticker or ticker.lower() == "nan":
             continue
         if ticker == "CASH":
@@ -244,7 +250,7 @@ def validate_configuration(holdings: pd.DataFrame, strategies: pd.DataFrame) -> 
                 stock = str(group.loc[group["ticker"].astype(str) != "CASH", "ticker"].iloc[0]) if (group["ticker"].astype(str) != "CASH").any() else ""
             if stock and stock not in set(group["ticker"].astype(str)):
                 warnings.append(f"{code}: 주식 티커 {stock}가 구성 종목에 없습니다.")
-        if rule == "visual":
+        if rule == "visual" and params.get("schema_version") != 2:
             conditions = params.get("conditions", [])
             if not conditions:
                 warnings.append(f"{code}: 시각 규칙에 조건이 없습니다.")
@@ -344,7 +350,7 @@ def category_history(snapshots: pd.DataFrame) -> pd.DataFrame:
     return grouped.reindex(columns=columns)
 
 
-def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date) -> pd.DataFrame:
+def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date, signal_fetch=None) -> pd.DataFrame:
     rows: list[dict] = []
     for code, sub in view.groupby("strategy", sort=False):
         sub = sub.copy()
@@ -439,6 +445,10 @@ def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date)
                     target_values[str(r.ticker)] = defensive_total * share
                     notes[str(r.ticker)] = "트리거 발동 → 현금성 축소" if triggered else "평시 목표비중"
                 notes[stock_ticker] = f"트리거 발동({dd:.1%}) → 주식 {stock_pct:.0f}%" if triggered else f"평시 주식 {stock_pct:.0f}%"
+        elif rule == "visual" and params.get("schema_version") == 2:
+            decision = evaluate_spec(params, sub, as_of, signal_fetch or _series)
+            target_values = decision['targets']
+            notes = {str(r.ticker): f"{decision['status']} · {decision['message']}" for r in sub.itertuples()}
         elif rule == "visual":
             passed, details = evaluate_visual_conditions(params, sub, as_of)
             action = str(params.get("on_pass" if passed else "on_fail", "hold")) if passed is not None else "hold"
