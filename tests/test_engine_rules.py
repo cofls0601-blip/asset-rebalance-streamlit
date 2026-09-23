@@ -121,6 +121,17 @@ class StrategyRuleTests(unittest.TestCase):
         self.assertEqual(dict(zip(plan["티커"], plan["목표평가액"])), {"AAA":600,"CASH":400})
         self.assert_balanced(plan, 1000)
 
+    def test_visual_monthly_schedule_moves_all_to_selected_ticker(self):
+        rows = view([
+            {"strategy":"V","ticker":"SPY","name":"SPY","market":"US","평가액":500,"target_pct":50},
+            {"strategy":"V","ticker":"CASH","name":"현금","평가액":500,"target_pct":50},
+        ])
+        params = {"conditions":[{"metric":"schedule","schedule":"monthly","operator":">=","threshold":1}],
+                  "on_pass":"move_all","on_fail":"hold","target_ticker":"SPY"}
+        plan = build_action_plan(rows, strategies("V", "visual", params), date(2026, 9, 30))
+        self.assertEqual(dict(zip(plan["티커"], plan["목표평가액"])), {"SPY":1000,"CASH":0})
+        self.assert_balanced(plan, 1000)
+
 
 if __name__ == "__main__":
     unittest.main()
