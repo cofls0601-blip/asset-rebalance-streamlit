@@ -29,6 +29,28 @@ class WorkspaceTests(unittest.TestCase):
             with self.subTest(page=page):
                 self.navigate(page)
 
+    def test_cached_three_argument_engine_is_reloaded(self):
+        import importlib
+        import streamlit_app.engine as engine
+        original_reload = importlib.reload
+        def stale_planner(view, strategies, as_of):
+            raise AssertionError('The stale planner must never be called')
+        def reload_with_fixture(module):
+            refreshed = original_reload(module)
+            refreshed._series = lambda *args, **kwargs: self.prices
+            return refreshed
+        with patch.object(engine, 'build_action_plan', stale_planner), patch('importlib.reload', side_effect=reload_with_fixture) as reload:
+            self.app.run()
+            self.assertFalse(self.app.exception)
+            reload.assert_called_once_with(engine)
+
+    def test_incompatible_deployment_stops_with_clear_message(self):
+        import streamlit_app.engine as engine
+        with patch.object(engine, 'build_action_plan', lambda a,b,c: None), patch('importlib.reload', return_value=engine):
+            self.app.run()
+            self.assertFalse(self.app.exception)
+            self.assertTrue(any('배포 파일의 버전' in e.value for e in self.app.error))
+
     def test_studio_save_and_engine_connection(self):
         self.navigate('Studio')
         frequency = next(w for w in self.app.selectbox if w.label == '판정 주기')
