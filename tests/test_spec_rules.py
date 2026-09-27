@@ -29,14 +29,17 @@ class SpecTests(unittest.TestCase):
                 'onPass':{'action':action,'params':params or {}},
                 'onFail':{'action':'hold_buy','params':{}}}
 
-    def test_all_eleven_operators_have_executable_evidence(self):
+    def test_all_operators_have_executable_evidence(self):
         conditions = [
             {'op':'sma_above','months':10}, {'op':'sma_below','months':10},
             {'op':'ema_above','days':200}, {'op':'ema_below','days':200},
             {'op':'dd_below','pct':-10,'lookback':120}, {'op':'dd_above','pct':-10,'lookback':120},
             {'op':'mom_rank','months':12,'rank':1,'tickers':['AAA','BBB']},
             {'op':'price_above_abs','price':150}, {'op':'price_below_abs','price':150},
-            {'op':'ticker_gt','tickerB':'BBB','pct':100}, {'op':'schedule','every':'monthend'}]
+            {'op':'ticker_gt','tickerB':'BBB','pct':100}, {'op':'schedule','every':'monthend'},
+            {'op':'weight_deviation','pct':2},
+            {'op':'momentum_above','months':12,'pct':0},
+            {'op':'external_above','value':3,'threshold':2,'source':'manual','observed_date':'2026-08-01','published_date':'2026-09-01'}]
         self.assertEqual({c['op'] for c in conditions}, set(OPERATORS))
         for c in conditions:
             with self.subTest(op=c['op']):
@@ -44,10 +47,10 @@ class SpecTests(unittest.TestCase):
                 self.assertNotEqual(result['status'],'계산 차단',result['message'])
                 self.assertEqual(len(result['evidence']),1)
 
-    def test_all_eight_actions_preserve_capital(self):
+    def test_all_actions_preserve_capital(self):
         for action in ACTIONS:
             with self.subTest(action=action):
-                result = evaluate(self.spec(action=action,params={'ticker':'AAA','pct':85,'cashPct':20,'message':'점검'}),self.holdings,self.day,self.fetch)
+                result = evaluate(self.spec(action=action,params={'ticker':'AAA','tickers':['BBB'],'pct':85,'cashPct':20,'message':'점검'}),self.holdings,self.day,self.fetch)
                 self.assertEqual(result['action'],action,result['message'])
                 self.assertAlmostEqual(sum(result['targets'].values()),1000)
                 self.assertTrue(all(v>=0 for v in result['targets'].values()))
@@ -80,10 +83,12 @@ class SpecTests(unittest.TestCase):
     def test_schedule_waits_without_fetch_and_next_date_handles_leap_year(self):
         def no_fetch(*args):
             self.fail('Waiting rules must not fetch signals')
-        result = evaluate(self.spec(),self.holdings,date(2026,9,23),no_fetch)
+        spec = self.spec()
+        spec['scope']['run'] = 'quarterly'
+        result = evaluate(spec,self.holdings,date(2026,10,23),no_fetch)
         self.assertEqual(result['status'],'일정 대기')
-        self.assertEqual(next_run(date(2028,2,1),'monthly'),date(2028,2,29))
-        self.assertEqual(next_run(date(2026,9,30),'quarterly'),date(2026,12,31))
+        self.assertEqual(next_run(date(2028,2,1),'monthly'),date(2028,2,2))
+        self.assertEqual(next_run(date(2026,9,30),'quarterly'),date(2026,12,1))
 
     def test_stale_signal_is_blocked(self):
         self.prices['AAA'] = self.prices['AAA'].iloc[:-20]

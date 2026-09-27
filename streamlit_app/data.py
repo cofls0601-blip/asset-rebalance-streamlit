@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import math
 from datetime import date, datetime, timezone
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -10,7 +11,7 @@ import pandas as pd
 
 HOLDING_COLUMNS = ["strategy", "account", "ticker", "name", "market", "category", "role", "target_pct", "shares"]
 STRATEGY_COLUMNS = ["code", "account", "description", "dynamic", "active", "annual_limit", "rule", "params_json",
-                    "version", "effective_date", "source", "change_note"]
+                    "version", "effective_date", "source", "change_note", "tolerance_pct", "fractional_us", "cash_reserve"]
 SNAPSHOT_COLUMNS = ["date", "saved_at", "strategy", "account", "ticker", "name", "category", "close", "shares", "value", "weight_pct", "target_pct", "strategy_version", "memo"]
 ACTION_COLUMNS = ["date", "saved_at", "strategy", "ticker", "name", "side", "planned_shares", "actual_shares", "planned_amount", "done", "reason", "memo"]
 CASHFLOW_COLUMNS = ["date", "amount", "memo", "strategy"]
@@ -21,11 +22,33 @@ class DataError(RuntimeError):
     pass
 
 
+def map_columns(frame, mapping):
+    """Explicit target->source mapping; never infer ambiguous column names."""
+    selected=[source for target,source in mapping.items() if source]
+    if len(selected)!=len(set(selected)):
+        raise DataError('하나의 원본 열을 여러 필수 열에 연결할 수 없습니다')
+    renamed=frame.rename(columns={source:target for target,source in mapping.items() if source})
+    if renamed.columns.duplicated().any():raise DataError('열 매핑 결과에 중복 이름이 있습니다')
+    return renamed
+
+
+def normalize_category_targets(frame):
+    if frame.empty:return pd.DataFrame(columns=CATEGORY_TARGET_COLUMNS)
+    if not set(CATEGORY_TARGET_COLUMNS).issubset(frame.columns):raise DataError('분류 목표에 category와 target_pct가 필요합니다')
+    frame=frame[CATEGORY_TARGET_COLUMNS].copy()
+    frame['category']=frame.category.fillna('').astype(str).str.strip()
+    frame['target_pct']=pd.to_numeric(frame.target_pct,errors='coerce')
+    if frame.category.eq('').any() or frame.category.duplicated().any():raise DataError('분류는 비어 있거나 중복될 수 없습니다')
+    if frame.target_pct.isna().any() or not frame.target_pct.map(math.isfinite).all() or (frame.target_pct<0).any() or abs(frame.target_pct.sum()-100)>.01:
+        raise DataError('분류 목표는 0 이상이며 합계가 100%여야 합니다')
+    return frame
+
+
 def normalize_holdings(frame: pd.DataFrame) -> pd.DataFrame:
     missing = [column for column in HOLDING_COLUMNS if column not in frame.columns]
     if missing:
         raise DataError(f"보유내역에 필요한 열이 없습니다: {', '.join(missing)}")
-    df = frame.reindex(columns=HOLDING_COLUMNS).copy()
+    df = frame.reindex(columns=HOLDING_COLUMNS + (["classification_json"] if "classification_json" in frame else [])).copy()
     for column in ["strategy", "account", "ticker", "name", "market", "category", "role"]:
         df[column] = df[column].fillna("").astype(str).str.strip()
     df["market"] = df["market"].str.upper().replace("", "KR")
@@ -34,7 +57,32 @@ def normalize_holdings(frame: pd.DataFrame) -> pd.DataFrame:
     is_kr_code = df["market"].eq("KR") & raw.str.fullmatch(r"\d+")
     df["ticker"] = raw.where(~is_kr_code, raw.str.zfill(6))
     for column in ["target_pct", "shares"]:
-        df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0.0)
+        values = pd.to_numeric(df[column], errors="coerce")
+        if values.isna().any() or not values.map(math.isfinite).all() or (values < 0).any():
+            raise DataError(f"{column}: 0 이상의 유한한 숫자를 입력하세요")
+        if column == "target_pct" and (values > 100).any():
+            raise DataError("목표 비중은 100% 이하이어야 합니다")
+        df[column] = values
+    if df[["strategy", "account", "ticker"]].eq("").any().any():
+        raise DataError("전략·계좌·티커는 필수입니다")
+    df["ticker"] = df["ticker"].str.upper()
+    if df.duplicated(["strategy", "ticker"]).any():
+        raise DataError("같은 전략의 중복 종목을 합쳐 입력하세요")
+    if not df["market"].isin(["KR", "US"]).all():
+        raise DataError("시장은 KR 또는 US여야 합니다")
+    if (df.groupby("strategy")["account"].nunique() > 1).any():
+        raise DataError("하나의 전략에는 하나의 계좌만 연결할 수 있습니다")
+    if "classification_json" in df:
+        for value in df["classification_json"].fillna(""):
+            try:
+                mapping = json.loads(value or "{}")
+                if not isinstance(mapping, dict) or (mapping and (abs(sum(float(v) for v in mapping.values())-100)>.001 or any(not math.isfinite(float(v)) or float(v)<0 for v in mapping.values()))):
+                    raise ValueError()
+            except (ValueError, TypeError):
+                raise DataError("혼합 자산 분류는 합계 100%인 JSON 객체여야 합니다")
+    cash = df["ticker"].eq("CASH")
+    df.loc[cash, ["market", "category"]] = ["KR", "현금"]
+    df["category"] = df["category"].replace("", "미분류")
     return df
 
 
@@ -44,10 +92,33 @@ def normalize_strategies(frame: pd.DataFrame) -> pd.DataFrame:
         raise DataError(f"전략표에 필요한 열이 없습니다: {', '.join(missing)}")
     df = frame.copy()
     defaults = {"account": "", "description": "", "dynamic": False, "active": True, "annual_limit": 0.0,
-                "version": "1.0", "effective_date": "", "source": "", "change_note": ""}
+                "version": "1.0", "effective_date": "", "source": "", "change_note": "",
+                "tolerance_pct": 0.0, "fractional_us": False, "cash_reserve": 0.0}
     for column, value in defaults.items():
         if column not in df:
             df[column] = value
+        else:
+            df[column] = df[column].fillna(value)
+    for column in ["tolerance_pct", "cash_reserve"]:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+        if df[column].isna().any() or not df[column].map(math.isfinite).all() or (df[column] < 0).any():
+            raise DataError(f"{column}: 0 이상의 숫자를 입력하세요")
+    if (df["tolerance_pct"] > 100).any():
+        raise DataError("허용 괴리는 100%p 이하이어야 합니다")
+    for column in ["active", "dynamic", "fractional_us"]:
+        values=df[column].astype(str).str.strip().str.lower()
+        if not values.isin({'true','false','1','0','1.0','0.0','yes','no',''}).all():
+            raise DataError(column+': TRUE 또는 FALSE를 입력하세요')
+        df[column] = values.isin({'true','1','1.0','yes'})
+    df['code']=df['code'].fillna('').astype(str).str.strip()
+    if df["code"].eq("").any() or df["code"].duplicated().any():
+        raise DataError("전략 코드는 비어 있거나 중복될 수 없습니다")
+    for value in df["params_json"]:
+        try:
+            if not isinstance(json.loads(value or "{}"), dict):
+                raise ValueError()
+        except (ValueError, TypeError) as exc:
+            raise DataError("전략 파라미터는 유효한 JSON 객체여야 합니다") from exc
     return df.reindex(columns=STRATEGY_COLUMNS).copy()
 
 
@@ -102,17 +173,14 @@ def read_optional_sheet(url: str, sheet_name: str, columns: list[str]) -> pd.Dat
         for column in columns:
             if column not in frame.columns:
                 frame[column] = ""
-        return frame.reindex(columns=columns)
-    except Exception:
-        return pd.DataFrame(columns=columns)
+        return frame.reindex(columns=list(dict.fromkeys(columns + list(frame.columns))))
+    except Exception as exc:
+        raise DataError(f"{sheet_name} 탭을 읽지 못했습니다. 탭 이름·공유 권한·연결을 확인하세요. 빈 탭도 헤더가 필요합니다.") from exc
 
 
-def read_workbook(url: str) -> dict[str, pd.DataFrame]:
-    try:
-        strategies = read_public_google_sheet(url, "strategies", "Strategies")
-    except DataError:
-        strategies = load_default_strategies()
-    return {
+def read_workbook(url: str, include_audit: bool = False) -> dict[str, pd.DataFrame]:
+    strategies = read_public_google_sheet(url, "strategies", "Strategies")
+    workbook = {
         "holdings": read_public_google_sheet(url, "holdings", "Holdings"),
         "strategies": strategies,
         "snapshots": read_optional_sheet(url, "Snapshots", SNAPSHOT_COLUMNS),
@@ -120,6 +188,10 @@ def read_workbook(url: str) -> dict[str, pd.DataFrame]:
         "cashflows": read_optional_sheet(url, "Cashflows", CASHFLOW_COLUMNS),
         "category_targets": read_optional_sheet(url, "CategoryTargets", CATEGORY_TARGET_COLUMNS),
     }
+    if include_audit:
+        workbook['evaluations']=read_optional_sheet(url,'Evaluations',['run_id','date','engine_version','part','parts','payload_json'])
+        workbook['strategy_versions']=read_optional_sheet(url,'StrategyVersions',STRATEGY_COLUMNS+['archived_at'])
+    return workbook
 
 
 def read_pasted_holdings(text: str) -> pd.DataFrame:
