@@ -197,6 +197,14 @@ class RevisedSpecTests(unittest.TestCase):
     def test_unknown_rule_is_blocked(self):
         self.assertIn('A',run(s=strategies(rule='typo'))['errors'])
 
+    def test_manual_strategy_only_trades_when_explicitly_selected(self):
+        manual=strategies({'frequency':'manual'},'static')
+        waiting=run_evaluation(holdings(),manual,DAY,fetch=fetch,now=NOW)
+        self.assertTrue(waiting['plan']['제안수량'].eq(0).all())
+        self.assertEqual(waiting['decisions'][0]['status'],'일정 대기')
+        active=run_evaluation(holdings(),manual,DAY,fetch=fetch,now=NOW,manual_codes=['A'])
+        self.assertTrue(active['plan']['제안수량'].ne(0).any())
+
     def test_cancelled_order_cannot_receive_fill(self):
         r=run();w,_=freeze_run(r,ws(r));draft=execution_draft(r);idx=draft.index[0]
         ident=draft.loc[idx,'주문ID'];w=cancel_orders(w,r,[ident],'수동 주문 취소')

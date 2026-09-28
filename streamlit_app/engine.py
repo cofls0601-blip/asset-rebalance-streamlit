@@ -250,11 +250,22 @@ def validate_configuration(holdings: pd.DataFrame, strategies: pd.DataFrame) -> 
             if abs(allocation - 1) > .001:
                 warnings.append(f"{code}: 1위 자산과 현금 비중의 합이 {allocation:.1%}입니다.")
         if rule in {"drawdown_buy", "drawdown_shift"}:
+            configured = params.get('stock_tickers', [])
+            if isinstance(configured,str):
+                configured=[t.strip() for t in configured.split(',') if t.strip()]
+            if params.get('stock_role'):
+                configured=group.loc[group.role.astype(str).eq(str(params['stock_role'])),'ticker'].astype(str).tolist()
             stock = str(params.get("stock_ticker") or params.get("signal", {}).get("ticker", ""))
             if rule == "drawdown_buy" and not params.get("stock_ticker"):
                 stock = str(group.loc[group["ticker"].astype(str) != "CASH", "ticker"].iloc[0]) if (group["ticker"].astype(str) != "CASH").any() else ""
-            if stock and stock not in set(group["ticker"].astype(str)):
+            if rule == 'drawdown_shift' and configured:
+                missing=sorted(set(configured)-set(group.ticker.astype(str)))
+                if missing:warnings.append(f"{code}: 주식 묶음 종목이 구성에 없습니다: {', '.join(missing)}")
+                if 'CASH' in configured:warnings.append(f"{code}: CASH는 주식 묶음에 포함할 수 없습니다.")
+            elif stock and stock not in set(group["ticker"].astype(str)):
                 warnings.append(f"{code}: 주식 티커 {stock}가 구성 종목에 없습니다.")
+            if rule == 'drawdown_buy' and 'target_weight_pct' in params and not 0 <= float(params['target_weight_pct']) <= 100:
+                warnings.append(f"{code}: 트리거 목표 비중은 0~100%여야 합니다.")
         if rule == "visual" and params.get("schema_version") != 2:
             conditions = params.get("conditions", [])
             if not conditions:
@@ -433,25 +444,43 @@ def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date,
                 if not stock_rows.empty and not cash_rows.empty:
                     stock_ticker = str(stock_rows.iloc[0]["ticker"])
                     cash_current = float(cash_rows["평가액"].sum())
-                    buy = cash_current * float(params.get("buy_fraction", .5)) if triggered else 0.0
+                    if triggered and 'target_weight_pct' in params:
+                        desired=total*float(params['target_weight_pct'])/100
+                        buy=min(cash_current,max(0.,desired-float(stock_rows.iloc[0]["평가액"])))
+                    else:
+                        buy = cash_current * float(params.get("buy_fraction", .5)) if triggered else 0.0
                     target_values[stock_ticker] = float(stock_rows.iloc[0]["평가액"]) + buy
                     target_values["CASH"] = cash_current - buy
                     notes[stock_ticker] = f"낙폭 {dd:.1%} 트리거 발동" if triggered else f"대기({dd:.1%})" if dd is not None else "대기(데이터 없음)"
                     notes["CASH"] = "매수 재원" if triggered else "대기현금 유지"
             else:
-                stock_ticker = str(params.get("stock_ticker") or signal_ticker)
-                if stock_ticker not in set(sub["ticker"].astype(str)) and not non_cash.empty:
-                    stock_ticker = str(non_cash.iloc[0]["ticker"])
+                stock_tickers=params.get('stock_tickers', [])
+                if isinstance(stock_tickers,str):stock_tickers=[t.strip() for t in stock_tickers.split(',') if t.strip()]
+                if params.get('stock_role'):
+                    stock_tickers=sub.loc[sub.role.astype(str).eq(str(params['stock_role'])),'ticker'].astype(str).tolist()
+                if not stock_tickers:
+                    stock_ticker = str(params.get("stock_ticker") or signal_ticker)
+                    stock_tickers=[stock_ticker] if stock_ticker in set(sub.ticker.astype(str)) else []
+                stocks=sub[sub.ticker.astype(str).isin(stock_tickers)]
+                if stocks.empty:raise ValueError('주식 묶음 대상이 전략 구성에 없습니다')
                 stock_pct = float(params.get("triggered_stock_pct", 85) if triggered else params.get("normal_stock_pct", 70))
-                target_values[stock_ticker] = total * stock_pct / 100
-                defensive = sub[sub["ticker"].astype(str) != stock_ticker]
-                defensive_total = total - target_values[stock_ticker]
-                current_defensive = float(defensive["평가액"].sum())
-                for r in defensive.itertuples():
-                    share = float(r.평가액) / current_defensive if current_defensive > 0 else 1 / max(1, len(defensive))
+                if not 0 <= stock_pct <= 100:raise ValueError('주식 묶음 비중은 0~100%여야 합니다')
+                stock_total=total*stock_pct/100
+                stock_weights=stocks.target_pct.astype(float)
+                if stock_weights.sum()<=0:stock_weights=stocks['평가액'].astype(float)
+                if stock_weights.sum()<=0:stock_weights=pd.Series(1.,index=stocks.index)
+                for idx,r in stocks.iterrows():
+                    target_values[str(r.ticker)]=stock_total*float(stock_weights.loc[idx])/float(stock_weights.sum())
+                    notes[str(r.ticker)] = f"트리거 발동({dd:.1%}) → 주식 묶음 {stock_pct:.0f}%" if triggered else f"평시 주식 묶음 {stock_pct:.0f}%"
+                defensive = sub[~sub.ticker.astype(str).isin(stock_tickers)]
+                defensive_total = total-stock_total
+                defensive_weights=defensive.target_pct.astype(float)
+                if defensive_weights.sum()<=0:defensive_weights=defensive['평가액'].astype(float)
+                if defensive_weights.sum()<=0:defensive_weights=pd.Series(1.,index=defensive.index)
+                for idx,r in defensive.iterrows():
+                    share=float(defensive_weights.loc[idx])/float(defensive_weights.sum())
                     target_values[str(r.ticker)] = defensive_total * share
                     notes[str(r.ticker)] = "트리거 발동 → 현금성 축소" if triggered else "평시 목표비중"
-                notes[stock_ticker] = f"트리거 발동({dd:.1%}) → 주식 {stock_pct:.0f}%" if triggered else f"평시 주식 {stock_pct:.0f}%"
         elif rule == "visual" and params.get("schema_version") == 2:
             decision = evaluate_spec(params, sub, as_of, signal_fetch or _series)
             target_values = decision['targets']

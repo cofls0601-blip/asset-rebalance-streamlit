@@ -51,4 +51,4 @@ python -m compileall -q streamlit_app.py streamlit_app
 
 Node.js가 있으면 Apps Script 원본의 저장·재시도·충돌·중간 실패 복구도 메모리 시트 어댑터로 검증합니다. GitHub Actions는 Python 3.12와 Node.js로 실행합니다.
 
-고정 가격으로 계산과 Streamlit 화면을 검증했습니다. 실제 Yahoo 요청은 이 개발 환경에서 요청 제한·시간 초과가 발생했습니다. 사용자 Apps Script URL·시크릿·7개 실제 전략은 제공되지 않아 실제 Sheets 왕복·해당 전략 검증·운영 배포 확인은 남아 있습니다. 원격 검증 브라우저의 localhost 접근도 제한되어 시각 검증은 완료하지 못했습니다.
+고정 가격으로 계산과 Streamlit 화면을 검증했습니다. 사용자가 제공한 31개 보유행·8개 전략 구성도 개인 금액을 저장소에 남기지 않고 합성 종가로 검증했습니다. 실제 Yahoo 요청은 이 개발 환경에서 요청 제한·시간 초과가 발생했습니다. Apps Script URL·시크릿은 제공되지 않아 실제 Sheets 왕복과 운영 배포 확인은 남아 있습니다. 원격 검증 브라우저의 localhost 접근도 제한되어 시각 검증은 완료하지 못했습니다.

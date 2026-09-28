@@ -74,12 +74,13 @@ def quantify(target_plan, view, strategy):
     return pd.DataFrame(desired)
 
 
-def run_evaluation(holdings, strategies, as_of, fetch=None, now=None, overrides=None):
+def run_evaluation(holdings, strategies, as_of, fetch=None, now=None, overrides=None, manual_codes=None):
     """Freeze valid account results; failures in one account never block others."""
     fetch = fetch or engine._series
     fetched_at = pd.Timestamp.now(tz='UTC') if now is None else pd.Timestamp(now)
     views, plans, decisions, errors, observations = [], [], [], {}, []
     strategies = normalize_strategies(strategies)
+    manual_codes=set(map(str,manual_codes or []))
     all_codes = list(dict.fromkeys(holdings.strategy.astype(str).tolist()))
     cache = {}
     def source(ticker, market, adjusted=False):
@@ -185,7 +186,7 @@ def run_evaluation(holdings, strategies, as_of, fetch=None, now=None, overrides=
                 if required.sma10.isna().any():
                     raise DataError('SMA 계산 시계열이 부족합니다')
             cadence = params.get('scope', {}).get('run', params.get('frequency','monthly'))
-            allowed = due(as_of, cadence, params.get('scope',{}).get('months',params.get('months')))
+            allowed = code in manual_codes if cadence == 'manual' else due(as_of, cadence, params.get('scope',{}).get('months',params.get('months')))
             decision = {'status':'일정 대기','message':'지정일이 실행 대상 월이 아닙니다','evidence':[]}
             if rule == 'visual' and params.get('schema_version') == 2:
                 decision = evaluate(params, view, as_of, signals)

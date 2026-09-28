@@ -168,11 +168,19 @@ if page=='이번 달':
                     st.success('입력 검증 완료. 지정일 종가를 조회하세요.')
                 except DataError as e:
                     st.error(str(e))
+    manual_candidates=[]
+    for _,strategy_row in st.session_state.strategies.iterrows():
+        try:
+            strategy_params=json.loads(strategy_row.params_json or '{}')
+            cadence=strategy_params.get('scope',{}).get('run',strategy_params.get('frequency','monthly'))
+            if cadence=='manual':manual_candidates.append(str(strategy_row.code))
+        except (TypeError,ValueError):pass
+    manual_codes=st.multiselect('이번 평가에서 수동 실행할 전략',manual_candidates,help='선택하지 않은 수동 전략은 자산만 평가하고 주문을 만들지 않습니다.') if manual_candidates else []
     if st.button('2 · 지정일 종가 조회·판정',type='primary',use_container_width=True):
         prices.clear()
         try:
             with st.spinner('실제 종가와 전략별 신호를 확인하는 중입니다…'):
-                run=run_evaluation(st.session_state.holdings,st.session_state.strategies,as_of,fetch=prices,overrides=st.session_state.overrides)
+                run=run_evaluation(st.session_state.holdings,st.session_state.strategies,as_of,fetch=prices,overrides=st.session_state.overrides,manual_codes=manual_codes)
             st.session_state.run=run
             st.session_state.pop('post_execution',None)
             if st.session_state.get('fills_run_id')!=run['id']:
