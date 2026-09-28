@@ -17,6 +17,12 @@ class WorkspaceTests(unittest.TestCase):
         self.app.sidebar.radio[0].set_value(page).run()
         self.assertFalse(self.app.exception)
 
+    def test_css_preserves_streamlit_material_icons(self):
+        source=(Path(__file__).resolve().parents[1]/'streamlit_app.py').read_text(encoding='utf-8')
+        self.assertNotIn('[class*="st-"]{font-family',source)
+        self.assertIn('[data-testid="stIconMaterial"]',source)
+        self.assertIn('Material Symbols Rounded',source)
+
     def with_run(self):
         h,s=holdings(),strategies()
         self.app.session_state['holdings']=h;self.app.session_state['strategies']=s
