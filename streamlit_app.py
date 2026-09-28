@@ -17,6 +17,7 @@ from streamlit_app.ledger import (TABLES, empty_workspace, backup_bytes, restore
     validate_actions, snapshots_match, load_frozen_run, order_status, cancel_orders)
 from streamlit_app.performance import summarize, validate_flows, monthly_risk, benchmark_index
 from streamlit_app.sheets_sync import load_workspace, save_workspace
+from streamlit_app.ui import numeric_column_config
 
 st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layout='wide')
 st.markdown('''<style>
@@ -159,6 +160,18 @@ def format_won(value):
     return f'{value:,.0f}원'
 
 
+def show_frame(frame, **kwargs):
+    """Render a table with consistent numeric display formats."""
+    custom = kwargs.pop('column_config', None)
+    return st.dataframe(frame, column_config=numeric_column_config(frame.columns, custom), **kwargs)
+
+
+def edit_frame(frame, **kwargs):
+    """Render an editor with consistent numeric display formats."""
+    custom = kwargs.pop('column_config', None)
+    return st.data_editor(frame, column_config=numeric_column_config(frame.columns, custom), **kwargs)
+
+
 def run_ready():
     if 'run' not in st.session_state:
         st.info('보유내역을 확인한 뒤 ‘이번 달’에서 지정일 종가를 조회하세요.')
@@ -226,8 +239,8 @@ if page=='이번 달':
     workflow_steps(['보유내역 확인','종가 확정','규칙 판정','주문안 검토','기록'])
     with st.expander('1 · 보유수량과 현금 확인',expanded='run' not in st.session_state):
         with st.form('holdings_form'):
-            edited=st.data_editor(st.session_state.holdings,num_rows='dynamic',hide_index=True,use_container_width=True,
-                column_config={'shares':st.column_config.NumberColumn('보유수량 / CASH 원화 잔액',min_value=0.),
+            edited=edit_frame(st.session_state.holdings,num_rows='dynamic',hide_index=True,use_container_width=True,
+                column_config={'shares':st.column_config.NumberColumn('보유수량 / CASH 원화 잔액',min_value=0.,format='%,.0f'),
                                'ticker':st.column_config.TextColumn('티커'),'target_pct':st.column_config.NumberColumn('기본 목표 (%)',min_value=0.,max_value=100.)})
             if st.form_submit_button('보유내역 확인·적용'):
                 try:
@@ -278,7 +291,7 @@ if page=='이번 달':
                     c2.markdown(f"**{format_won(sub['평가액'].sum())}**")
                     if decision.get('evidence'):
                         with st.expander('판정 근거'):
-                            st.dataframe(pd.DataFrame(decision['evidence']),hide_index=True,use_container_width=True)
+                            show_frame(pd.DataFrame(decision['evidence']),hide_index=True,use_container_width=True)
             st.info('다음: 주문안에서 수량과 기존 현금을 검토한 뒤 기록 화면에서 평가를 확정하세요.')
         else:
             st.info('가격이 확정된 계좌가 없습니다. 입력값 또는 종가 확정 시점을 확인하세요.')
@@ -298,11 +311,11 @@ elif page=='자산 현황':
             grouped['목표대비괴리(%p)']=grouped['비중(%)']-grouped.target_pct
         st.plotly_chart(px.bar(grouped,x='비중(%)',y=col,orientation='h',color=col,
             color_discrete_sequence=['#f7931a','#38bdf8','#a855f7','#22c55e','#eab308','#64748b']),use_container_width=True)
-        st.dataframe(grouped,hide_index=True,use_container_width=True)
+        show_frame(grouped,hide_index=True,use_container_width=True)
         if col=='category':
             with st.expander('전체 분류 목표 편집'):
                 with st.form('category_targets_form'):
-                    target_edit=st.data_editor(st.session_state.category_targets,num_rows='dynamic',hide_index=True)
+                    target_edit=edit_frame(st.session_state.category_targets,num_rows='dynamic',hide_index=True)
                     if st.form_submit_button('분류 목표 검증·적용'):
                         try:
                             install({'category_targets':normalize_category_targets(target_edit)},invalidate=False)
@@ -313,17 +326,18 @@ elif page=='자산 현황':
         query=st.text_input('종목코드·종목명 검색')
         if query:
             detail=detail[detail.ticker.str.contains(query,case=False,regex=False,na=False)|detail.name.str.contains(query,case=False,regex=False,na=False)]
-        st.dataframe(detail[['strategy','ticker','name','shares','close','currency','fx','평가액','현재비중','target_pct','실행목표(%)','실행후비중(%)','price_date','price_source']],hide_index=True,use_container_width=True)
+        detail_view=detail[['strategy','name','ticker','shares','close','currency','fx','평가액','현재비중','target_pct','실행목표(%)','실행후비중(%)','price_date','price_source']].rename(columns={'name':'종목명','ticker':'티커'})
+        show_frame(detail_view,hide_index=True,use_container_width=True)
 
 elif page=='주문안':
     run=run_ready()
     if run and not run['plan'].empty:
         st.caption('실제 종가로 산정한 수동 주문안입니다. 비용·세금은 계산하지 않으며 매수는 기존 CASH 잔액으로 제한합니다.')
         plan=run['plan']
-        st.dataframe(plan[['전략','티커','구분','기준종가','보유수량','기본목표(%)','실행목표(%)','목표조정액','제안수량','예상매매액','실행후비중(%)','예상잔여현금','주문예정일','근거']],hide_index=True,use_container_width=True)
+        show_frame(plan[['전략','종목','티커','구분','기준종가','보유수량','기본목표(%)','실행목표(%)','목표조정액','제안수량','예상매매액','실행후비중(%)','예상잔여현금','주문예정일','근거']],hide_index=True,use_container_width=True)
         with st.expander('제안 수량 수정'):
             with st.form('revise_order_'+run['id']):
-                edited_order=st.data_editor(plan[['주문ID','전략','티커','제안수량']],disabled=['주문ID','전략','티커'],hide_index=True,use_container_width=True)
+                edited_order=edit_frame(plan[['주문ID','전략','종목','티커','제안수량']],disabled=['주문ID','전략','종목','티커'],hide_index=True,use_container_width=True)
                 edit_reason=st.text_input('주문안 수정 사유')
                 if st.form_submit_button('수량·현금 검증 후 주문안 수정'):
                     try:
@@ -339,10 +353,10 @@ elif page=='주문안':
         st.divider();st.subheader('실제 체결 반영')
         status=order_status(run,st.session_state.actions)
         if not status.empty:
-            st.dataframe(status.drop(columns='주문ID'),hide_index=True,use_container_width=True)
+            show_frame(status.drop(columns='주문ID'),hide_index=True,use_container_width=True)
             with st.expander('미실행·부분 체결 주문 취소 기록'):
                 choices=status[status['상태'].isin(['미실행','부분 체결'])]
-                cancel_ids=st.multiselect('남은 주문을 취소한 종목',choices['주문ID'].tolist(),format_func=lambda v:choices.set_index('주문ID').loc[v,'티커'])
+                cancel_ids=st.multiselect('남은 주문을 취소한 종목',choices['주문ID'].tolist(),format_func=lambda v:choices.set_index('주문ID').loc[v,'종목'])
                 cancel_reason=st.text_input('취소 사유')
                 if st.button('잔여 주문 취소 기록'):
                     try:
@@ -355,8 +369,8 @@ elif page=='주문안':
         fills=st.session_state.fills
         if not fills.empty:
             editable=['실행','체결ID','체결일','실제수량','실제단가','실제환율','실제체결금액','메모']
-            show=['실행','전략','티커','구분','제안수량','체결ID','체결일','실제수량','실제단가','실제환율','실제체결금액','메모']
-            edited=st.data_editor(fills[show],hide_index=True,use_container_width=True,disabled=[c for c in show if c not in editable],key='fill_editor_'+run['id'])
+            show=['실행','전략','종목','티커','구분','제안수량','체결ID','체결일','실제수량','실제단가','실제환율','실제체결금액','메모']
+            edited=edit_frame(fills[show],hide_index=True,use_container_width=True,disabled=[c for c in show if c not in editable],key='fill_editor_'+run['id'])
             saved=fills.copy()
             for c in editable:saved[c]=edited[c]
             st.session_state.fills=saved
@@ -376,9 +390,9 @@ elif page=='전략실':
     st.caption('현재 운용 규칙을 편집합니다. 연간 전략 연구와 AI 보조는 이번 범위에 포함되지 않습니다.')
     st.subheader('전략별 운영 설정')
     with st.form('strategy_settings'):
-        edited=st.data_editor(st.session_state.strategies,hide_index=True,num_rows='dynamic',use_container_width=True,
+        edited=edit_frame(st.session_state.strategies,hide_index=True,num_rows='dynamic',use_container_width=True,
             column_config={'tolerance_pct':st.column_config.NumberColumn('허용 괴리 (%p)',min_value=0.,max_value=100.),
-                           'cash_reserve':st.column_config.NumberColumn('현금 유보액 (원)',min_value=0.),
+                           'cash_reserve':st.column_config.NumberColumn('현금 유보액 (원)',min_value=0.,format='%,.0f'),
                            'fractional_us':st.column_config.CheckboxColumn('미국 소수점 수량 허용')})
         st.caption('허용 괴리 2는 목표 대비 2%p를 뜻합니다. CASH는 원화만 지원하며 외화 현금은 원화 환산 후 직접 입력합니다.')
         if st.form_submit_button('전략 설정 검증·적용'):
@@ -470,7 +484,7 @@ elif page=='기록':
                     d.metric('XIRR',fmt(metrics['xirr']))
                     st.caption('불규칙한 평가일 사이의 입출금을 날짜 가중한 Modified Dietz 근사입니다. 배당·비용은 별도로 추적하지 않습니다.')
                     st.plotly_chart(px.line(eq,x='date',y='index',markers=True,labels={'index':'시작 100','date':'평가일'}),use_container_width=True)
-                    st.dataframe(eq,hide_index=True,use_container_width=True)
+                    show_frame(eq,hide_index=True,use_container_width=True)
                     risk=monthly_risk(eq)
                     with st.expander('월간 위험 지표·벤치마크'):
                         a,b,c=st.columns(3)
@@ -489,13 +503,13 @@ elif page=='기록':
                 cat_history=effective if selected=='전체' else effective[effective.strategy.eq(selected)]
                 cats=classification_view(cat_history.rename(columns={'value':'평가액'})).groupby(['date','category'],as_index=False)['평가액'].sum().rename(columns={'평가액':'value'})
                 st.plotly_chart(px.area(cats,x='date',y='value',color='category'),use_container_width=True)
-                with st.expander('원본 기록·개정'):st.dataframe(history,hide_index=True,use_container_width=True)
-                st.subheader('실제 체결 이력');st.dataframe(st.session_state.actions,hide_index=True,use_container_width=True)
+                with st.expander('원본 기록·개정'):show_frame(history,hide_index=True,use_container_width=True)
+                st.subheader('실제 체결 이력');show_frame(st.session_state.actions,hide_index=True,use_container_width=True)
             except DataError as e:st.error(str(e))
     with tabs[2]:
         st.caption('입금은 양수, 출금은 음수. 계좌 간 이체는 transfer와 같은 transfer_id로 양쪽 계좌를 기록합니다. 이 표는 잔고를 자동 변경하지 않습니다.')
         with st.form('flows_form'):
-            edited=st.data_editor(st.session_state.cashflows,num_rows='dynamic',hide_index=True,use_container_width=True)
+            edited=edit_frame(st.session_state.cashflows,num_rows='dynamic',hide_index=True,use_container_width=True)
             if st.form_submit_button('입출금 검증·적용'):
                 try:install({'cashflows':validate_flows(edited)},invalidate=False);st.success('입출금 기록을 적용했습니다.')
                 except DataError as e:st.error(str(e))
@@ -514,7 +528,7 @@ elif page=='설정':
                 except DataError as e:st.error(str(e))
             if st.session_state.get('remote_preview'):
                 loaded,token=st.session_state.remote_preview
-                st.dataframe(pd.DataFrame([{'표':k,'현재 행':len(st.session_state[k]),'시트 행':len(v)} for k,v in loaded.items()]),hide_index=True)
+                show_frame(pd.DataFrame([{'표':k,'현재 행':len(st.session_state[k]),'시트 행':len(v)} for k,v in loaded.items()]),hide_index=True)
                 st.caption('최신 원장 적용은 현재 세션 자료를 교체합니다. 저장하지 않은 작업은 전체 백업으로 보존하세요.')
                 if st.button('검토한 최신 원장 적용'):
                     install(loaded);st.session_state.remote_token=token
@@ -542,8 +556,8 @@ elif page=='설정':
             except DataError as e:st.error(str(e))
         preview=st.session_state.get('sheet_preview')
         if preview:
-            st.dataframe(pd.DataFrame([{'탭':k,'기존 행':len(st.session_state[k]),'가져올 행':len(v)} for k,v in preview.items()]),hide_index=True)
-            st.dataframe(preview['holdings'],hide_index=True,use_container_width=True)
+            show_frame(pd.DataFrame([{'탭':k,'기존 행':len(st.session_state[k]),'가져올 행':len(v)} for k,v in preview.items()]),hide_index=True)
+            show_frame(preview['holdings'],hide_index=True,use_container_width=True)
             st.caption('적용하면 읽어온 탭의 세션 데이터를 바꿉니다. 먼저 전체 백업을 내려받으세요.')
             if st.button('검토한 시트 데이터 적용'):
                 matched=snapshots_match(st.session_state.snapshots,preview['snapshots'])
@@ -565,7 +579,7 @@ elif page=='설정':
                     with st.expander('필수 열 이름 연결',expanded=True):
                         mapping={col:st.selectbox(col+'에 사용할 원본 열',['']+list(frame.columns),key='column_map_'+kind+'_'+col) for col in missing}
                     frame=map_columns(frame,mapping)
-                st.dataframe(frame.head(10),hide_index=True)
+                show_frame(frame.head(10),hide_index=True)
                 if st.button('검토한 표 적용'):
                     if kind=='holdings':frame=normalize_holdings(frame)
                     elif kind=='strategies':frame=normalize_strategies(frame)
@@ -584,7 +598,7 @@ elif page=='설정':
         if file:
             try:
                 restored,drafts=restore_backup(file.getvalue(),include_drafts=True)
-                st.dataframe(pd.DataFrame([{'데이터':k,'행':len(v)} for k,v in restored.items()]),hide_index=True)
+                show_frame(pd.DataFrame([{'데이터':k,'행':len(v)} for k,v in restored.items()]),hide_index=True)
                 if st.button('검증한 백업으로 복원'):
                     install(restored)
                     st.session_state.overrides={};st.session_state.demo=False
@@ -598,7 +612,7 @@ elif page=='설정':
             code=st.selectbox('전략',st.session_state.strategies.code.tolist())
             ticker=st.text_input('수동 입력 티커').upper().strip()
             observed=st.date_input('실제 가격일',as_of,max_value=as_of)
-            close=st.number_input('실제 종가',min_value=0.,value=0.)
+            close=st.number_input('실제 종가',min_value=0.,value=0.,format='%.0f')
             source=st.text_input('가격 출처')
             reason=st.text_input('수동 입력 사유')
             if st.form_submit_button('수동 가격 등록'):
@@ -613,3 +627,4 @@ elif page=='설정':
 
 st.divider()
 st.caption('수동 주문 전용 · Google Sheets 원장 · 선택한 기준일의 실제 종가 · 연간 연구는 후속 개발')
+
