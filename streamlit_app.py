@@ -27,7 +27,14 @@ st.markdown('''<style>
   --terracotta:#c86b45;--terracotta-dark:#8b4d32;--terracotta-soft:#f6e4db;
   --sage:#587064;--deep-green:#24312b;
 }
-html,body,[class*="st-"]{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;line-height:1.55}
+html,body,.stApp{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;line-height:1.55}
+.material-symbols-rounded,.material-symbols-outlined,.material-icons,[data-testid="stIconMaterial"]{
+  font-family:"Material Symbols Rounded","Material Icons"!important;
+  font-weight:normal!important;font-style:normal!important;line-height:1!important;
+  letter-spacing:normal!important;text-transform:none!important;white-space:nowrap!important;
+  word-wrap:normal!important;direction:ltr!important;font-feature-settings:"liga"!important;
+  -webkit-font-feature-settings:"liga"!important;-webkit-font-smoothing:antialiased!important;
+}
 [data-testid="stAppViewContainer"]{background:var(--warm-bg);color:var(--warm-ink)}
 [data-testid="stHeader"]{background:color-mix(in srgb,var(--warm-bg) 88%,transparent)}
 .block-container{max-width:1360px;padding:2.5rem 2rem 4rem}
