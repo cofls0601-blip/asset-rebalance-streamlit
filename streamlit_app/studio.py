@@ -85,7 +85,7 @@ def render(strategies, holdings, priced_view, as_of, fetch):
                         condition['rank'] = st.number_input('순위 이내', 1, 100, int(condition.get('rank',1)), key=ck+'_rank')
                         st.caption('신호 티커를 비우면 후보 중 1위를 선택합니다. 다음 조건·동작에서 __winner__로 참조합니다.')
                     if op.startswith('price_'):
-                        condition['price'] = st.number_input('기준 가격(현지통화)', 0.0, value=float(condition.get('price',0)), key=ck+'_price', format='%.0f')
+                        condition['price'] = st.number_input('기준 가격(현지통화)', 0.0, value=float(condition.get('price',0)), key=ck+'_price', format='%,.0f')
                     if op == 'ticker_gt':
                         condition['tickerB'] = st.text_input('비교 티커 B', condition.get('tickerB','SPY'), key=ck+'_other')
                         condition['pct'] = st.number_input('B 가격 대비 비율(%)', 0.0, value=float(condition.get('pct',100)), key=ck+'_ratio')
