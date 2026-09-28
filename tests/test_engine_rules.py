@@ -54,6 +54,25 @@ class StrategyRuleTests(unittest.TestCase):
         self.assertEqual(targets["153130"], 150)
         self.assert_balanced(plan, 1000)
 
+    def test_sso_multi_asset_basket_preserves_target_mix(self):
+        rows = view([
+            {"strategy":"SSO","ticker":"QLD","name":"QLD","평가액":200,"target_pct":20},
+            {"strategy":"SSO","ticker":"QQQ","name":"QQQ","평가액":300,"target_pct":30},
+            {"strategy":"SSO","ticker":"SSO","name":"SSO","평가액":300,"target_pct":30},
+            {"strategy":"SSO","ticker":"MAGX","name":"MAGX","평가액":0,"target_pct":0},
+            {"strategy":"SSO","ticker":"CASH","name":"cash","평가액":200,"target_pct":20},
+        ])
+        params={"signal":{"ticker":"SPY","market":"US"},"threshold":-.15,
+                "stock_tickers":["MAGX","QLD","QQQ","SSO"],"normal_stock_pct":80,"triggered_stock_pct":85}
+        import streamlit_app.engine as engine
+        original=engine._series;engine._series=lambda *args,**kwargs:pd.Series([100]*119+[80])
+        try:plan=build_action_plan(rows,strategies("SSO","drawdown_shift",params),date(2026,9,30))
+        finally:engine._series=original
+        targets=dict(zip(plan['티커'],plan['목표평가액']))
+        self.assertEqual(targets['MAGX'],0);self.assertEqual(targets['CASH'],150)
+        self.assertAlmostEqual(targets['QLD'],212.5);self.assertAlmostEqual(targets['QQQ'],318.75);self.assertAlmostEqual(targets['SSO'],318.75)
+        self.assert_balanced(plan,1000)
+
     def test_gsm_keeps_assets_with_missing_signal(self):
         rows = view([
             {"strategy": "GSM", "ticker": "A", "name": "winner", "평가액": 200, "close": 110, "sma10": 100, "momentum12": .20},
@@ -98,6 +117,21 @@ class StrategyRuleTests(unittest.TestCase):
         self.assertEqual(targets["418660"], 700)
         self.assertEqual(targets["CASH"], 300)
         self.assert_balanced(plan, 1000)
+
+    def test_isa_trigger_buys_only_up_to_total_target_weight(self):
+        rows=view([{"strategy":"ISA","ticker":"418660","name":"leveraged","평가액":200},
+                   {"strategy":"ISA","ticker":"CASH","name":"cash","평가액":800}])
+        params={"signal":{"ticker":"QQQ","market":"US","lookback_days":120},"threshold":-.1,"target_weight_pct":50}
+        import streamlit_app.engine as engine
+        original=engine._series;engine._series=lambda *args,**kwargs:pd.Series([100]*119+[85])
+        try:
+            plan=build_action_plan(rows,strategies('ISA','drawdown_buy',params),date(2026,9,30))
+            targets=dict(zip(plan['티커'],plan['목표평가액']))
+            self.assertEqual(targets,{'418660':500,'CASH':500})
+            rows.loc[rows.ticker.eq('418660'),'평가액']=600;rows.loc[rows.ticker.eq('CASH'),'평가액']=400
+            plan=build_action_plan(rows,strategies('ISA','drawdown_buy',params),date(2026,9,30))
+            self.assertEqual(dict(zip(plan['티커'],plan['목표평가액'])),{'418660':600,'CASH':400})
+        finally:engine._series=original
 
     def test_static_and_hold_rules(self):
         rows = view([
