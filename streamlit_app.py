@@ -612,7 +612,7 @@ elif page=='설정':
             code=st.selectbox('전략',st.session_state.strategies.code.tolist())
             ticker=st.text_input('수동 입력 티커').upper().strip()
             observed=st.date_input('실제 가격일',as_of,max_value=as_of)
-            close=st.number_input('실제 종가',min_value=0.,value=0.,format='%.0f')
+            close=st.number_input('실제 종가',min_value=0.,value=0.,format='%,.0f')
             source=st.text_input('가격 출처')
             reason=st.text_input('수동 입력 사유')
             if st.form_submit_button('수동 가격 등록'):
