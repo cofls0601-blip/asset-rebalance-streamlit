@@ -7,7 +7,7 @@ MONEY_COLUMNS = {
     '실제체결금액', '지난달평가액', '증감액', 'value', 'amount', 'net_flow', 'profit',
     'planned_amount', 'actual_amount', 'cash_reserve', '현재값', '기준값',
 }
-PRICE_COLUMNS = {'close', '기준종가', '실제단가', 'actual_price', 'fx', '실제환율', 'price'}
+PRICE_COLUMNS = {'close', '기준종가', '실제단가', 'actual_price', 'fx', '환율', '실제환율', 'price'}
 QUANTITY_COLUMNS = {
     'shares', '보유수량', '제안수량', '실제수량', 'planned_shares', 'actual_shares',
     '누적체결', '잔여수량',
