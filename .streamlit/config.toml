@@ -4,4 +4,10 @@ headless = true
 [browser]
 gatherUsageStats = false
 
-# No theme.base/color overrides: Streamlit follows the browser's system theme.
+[theme]
+base = "light"
+primaryColor = "#C86B45"
+backgroundColor = "#F7F3EE"
+secondaryBackgroundColor = "#FFFCF8"
+textColor = "#2E312F"
+font = "sans serif"

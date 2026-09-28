@@ -19,15 +19,75 @@ from streamlit_app.performance import summarize, validate_flows, monthly_risk, b
 from streamlit_app.sheets_sync import load_workspace, save_workspace
 
 st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layout='wide')
-# Native Streamlit surfaces inherit the user's browser theme. No fixed page colors.
 st.markdown('''<style>
-html,body,[class*="st-"]{font-family:Inter,sans-serif} .block-container{max-width:1440px;padding-top:2.2rem}
-h1{font-size:2rem!important;letter-spacing:-.045em}h2{font-size:1.25rem!important}
-[data-testid="stMetricValue"]{font-family:'JetBrains Mono',monospace;font-size:1.6rem}
-[data-testid="stMetric"]{padding:.8rem;border:1px solid rgba(128,128,128,.22);border-radius:10px}
-.eyebrow{font-size:11px;letter-spacing:.16em;color:#ed941e;font-weight:700;margin-bottom:8px}
-[data-testid="stSidebar"]{border-right:1px solid rgba(128,128,128,.16)}
+:root{
+  font-size:16px;color-scheme:light;
+  --warm-bg:#f7f3ee;--warm-surface:#fffcf8;--warm-ink:#2e312f;
+  --warm-muted:#77736d;--warm-border:#e7ded5;
+  --terracotta:#c86b45;--terracotta-dark:#8b4d32;--terracotta-soft:#f6e4db;
+  --sage:#587064;--deep-green:#24312b;
+}
+html,body,[class*="st-"]{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;line-height:1.55}
+[data-testid="stAppViewContainer"]{background:var(--warm-bg);color:var(--warm-ink)}
+[data-testid="stHeader"]{background:color-mix(in srgb,var(--warm-bg) 88%,transparent)}
+.block-container{max-width:1360px;padding:2.5rem 2rem 4rem}
+h1{font-size:clamp(2rem,3vw,2.55rem)!important;line-height:1.2!important;letter-spacing:-.035em!important;margin-bottom:.45rem!important}
+h2{font-size:1.5rem!important;line-height:1.35!important;letter-spacing:-.025em!important;margin-top:1.8rem!important}
+h3{font-size:1.2rem!important;line-height:1.4!important;letter-spacing:-.015em!important}
+p,li{font-size:1rem;line-height:1.6}
+[data-testid="stCaptionContainer"] p{font-size:.9rem!important;line-height:1.55!important;color:var(--warm-muted)!important}
+[data-testid="stWidgetLabel"] p{font-size:.95rem!important;font-weight:650!important;line-height:1.45!important}
+[data-testid="stMetricValue"]{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.72rem!important;line-height:1.25!important}
+[data-testid="stMetricLabel"] p{font-size:.9rem!important;font-weight:650!important}
+[data-testid="stMetric"]{padding:1rem 1.05rem;border:1px solid var(--warm-border);border-radius:14px;background:var(--warm-surface)}
+[data-testid="stSidebar"]{border-right:1px solid #3a4b43;background:var(--deep-green);color:#f9f5ef}
+[data-testid="stSidebar"] p,[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3,[data-testid="stSidebar"] label{color:#f9f5ef!important}
+[data-testid="stSidebar"] [role="radiogroup"] label{min-height:42px;padding:.3rem .45rem;border-radius:8px}
+[data-testid="stSidebar"] [role="radiogroup"] p{font-size:.96rem!important;font-weight:600!important}
+.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{min-height:44px;border-radius:10px;border-color:color-mix(in srgb,var(--terracotta) 55%,var(--warm-border));font-size:.96rem!important;font-weight:650!important;padding:.55rem 1rem!important}
+[data-baseweb="input"] input,[data-baseweb="select"] *{font-size:.96rem!important}
+[data-baseweb="tab-list"] button{min-height:44px;padding:.65rem .9rem!important}
+[data-baseweb="tab-list"] button p{font-size:.96rem!important;font-weight:650!important}
+[data-testid="stExpander"] summary p{font-size:1rem!important;font-weight:650!important}
+[data-testid="stAlert"] p{font-size:.95rem!important;line-height:1.55!important}
+.eyebrow{font-size:.78rem;line-height:1.4;letter-spacing:.14em;color:var(--terracotta);font-weight:750;margin-bottom:.45rem}
+.page-description{font-size:1rem;line-height:1.6;color:var(--warm-muted);margin:0 0 1.5rem}
+.workflow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.65rem;margin:.25rem 0 1.5rem}
+.workflow-step{display:flex;align-items:center;gap:.65rem;min-height:54px;padding:.7rem .8rem;border:1px solid var(--warm-border);border-radius:14px;background:var(--warm-surface);box-shadow:0 4px 18px rgba(55,45,35,.035)}
+.workflow-step:first-child{border-color:#d99b7b;background:var(--terracotta-soft)}
+.workflow-index{display:grid;place-items:center;flex:0 0 26px;height:26px;border-radius:999px;background:var(--terracotta);color:#fff;font-size:.78rem;font-weight:800}
+.workflow-label{font-size:.9rem;font-weight:680;line-height:1.35;word-break:keep-all}
+@media(max-width:800px){
+  .block-container{padding:1.25rem 1rem 4.5rem}
+  h1{font-size:2rem!important}
+  h2{font-size:1.35rem!important}
+  [data-testid="stMetric"]{padding:.85rem .9rem}
+  [data-testid="stMetricValue"]{font-size:1.42rem!important}
+  [data-baseweb="tab-list"]{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .workflow{display:flex;overflow-x:auto;gap:.55rem;margin-right:-1rem;padding-right:1rem;padding-bottom:.35rem;scroll-snap-type:x mandatory;scrollbar-width:none}
+  .workflow::-webkit-scrollbar,[data-baseweb="tab-list"]::-webkit-scrollbar{display:none}
+  .workflow-step{flex:0 0 8.5rem;min-height:78px;align-items:flex-start;flex-direction:column;gap:.35rem;scroll-snap-align:start}
+}
+@media(max-width:460px){
+  .page-description{font-size:.94rem;margin-bottom:1.15rem}
+  [data-testid="stHorizontalBlock"]{gap:.7rem}
+  .stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{width:100%}
+}
 </style>''',unsafe_allow_html=True)
+
+PAGE_DESCRIPTIONS={
+    '이번 달':'보유내역과 실제 종가를 확인하고 이번 평가의 주문안을 준비합니다.',
+    '자산 현황':'전략·역할·자산 분류별 평가액과 목표 비중의 차이를 살펴봅니다.',
+    '주문안':'다음 거래일에 직접 입력할 수량과 예상 잔여현금을 검토합니다.',
+    '전략실':'조건, 실행 주기와 판정별 동작을 한 화면에서 설계하고 검증합니다.',
+    '기록':'평가와 체결 내역을 확정하고 기간별 성과를 확인합니다.',
+    '설정':'Google Sheets 연결, 백업·복원과 수동 가격을 관리합니다.',
+}
+
+
+def workflow_steps(labels):
+    items=''.join(f'<div class="workflow-step"><span class="workflow-index">{i}</span><span class="workflow-label">{label}</span></div>' for i,label in enumerate(labels,1))
+    st.markdown(f'<div class="workflow" aria-label="운영 단계">{items}</div>',unsafe_allow_html=True)
 
 @st.cache_data(ttl=900,show_spinner=False)
 def prices(ticker,market,day,adjusted=False):
@@ -151,11 +211,12 @@ with st.sidebar:
 
 st.markdown('<div class="eyebrow">ALLOCATION WORKSPACE</div>',unsafe_allow_html=True)
 st.title(page)
+st.markdown(f'<p class="page-description">{PAGE_DESCRIPTIONS[page]}</p>',unsafe_allow_html=True)
 if 'run' in st.session_state and st.session_state.run['date']!=str(as_of):
     st.warning(f"현재 평가 결과는 {st.session_state.run['date']} 기준입니다. 새 기준일로 다시 조회하세요.")
 
 if page=='이번 달':
-    st.caption('보유내역 확인 → 종가 확정 → 규칙 판정 → 주문안 검토 → 기록')
+    workflow_steps(['보유내역 확인','종가 확정','규칙 판정','주문안 검토','기록'])
     with st.expander('1 · 보유수량과 현금 확인',expanded='run' not in st.session_state):
         with st.form('holdings_form'):
             edited=st.data_editor(st.session_state.holdings,num_rows='dynamic',hide_index=True,use_container_width=True,

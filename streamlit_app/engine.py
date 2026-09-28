@@ -390,7 +390,7 @@ def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date,
                 breached = ticker in filtered and pd.notna(r.sma10) and float(getattr(r, "signal_close", r.close)) < float(r.sma10)
                 if breached:
                     target_values[ticker] = 0.0
-                    notes[ticker] = "SMA 이탈 → 현금화"
+                    notes[ticker] = "SMA 이탈 · 현금화"
                 elif restore_now:
                     target_values[ticker] = total * float(r.target_pct) / 100
                     notes[ticker] = "목표비중 복원(지정일)"
@@ -419,7 +419,7 @@ def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date,
                 cash_note = "전략 대기현금"
             else:
                 cash_value = pool
-                cash_note = "통과 후보 없음 → 현금"
+                cash_note = "통과 후보 없음 · 현금 유지"
             if "CASH" in target_values:
                 target_values["CASH"] = cash_value
                 notes["CASH"] = cash_note
@@ -471,7 +471,7 @@ def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date,
                 if stock_weights.sum()<=0:stock_weights=pd.Series(1.,index=stocks.index)
                 for idx,r in stocks.iterrows():
                     target_values[str(r.ticker)]=stock_total*float(stock_weights.loc[idx])/float(stock_weights.sum())
-                    notes[str(r.ticker)] = f"트리거 발동({dd:.1%}) → 주식 묶음 {stock_pct:.0f}%" if triggered else f"평시 주식 묶음 {stock_pct:.0f}%"
+                    notes[str(r.ticker)] = f"트리거 발동({dd:.1%}) · 주식 묶음 {stock_pct:.0f}%" if triggered else f"평시 주식 묶음 {stock_pct:.0f}%"
                 defensive = sub[~sub.ticker.astype(str).isin(stock_tickers)]
                 defensive_total = total-stock_total
                 defensive_weights=defensive.target_pct.astype(float)
@@ -480,7 +480,7 @@ def build_action_plan(view: pd.DataFrame, strategies: pd.DataFrame, as_of: date,
                 for idx,r in defensive.iterrows():
                     share=float(defensive_weights.loc[idx])/float(defensive_weights.sum())
                     target_values[str(r.ticker)] = defensive_total * share
-                    notes[str(r.ticker)] = "트리거 발동 → 현금성 축소" if triggered else "평시 목표비중"
+                    notes[str(r.ticker)] = "트리거 발동 · 현금성 축소" if triggered else "평시 목표비중"
         elif rule == "visual" and params.get("schema_version") == 2:
             decision = evaluate_spec(params, sub, as_of, signal_fetch or _series)
             target_values = decision['targets']

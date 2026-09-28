@@ -19,7 +19,7 @@ def select(label, choices, value, key, labels=None):
 
 def render(strategies, holdings, priced_view, as_of, fetch):
     st.subheader('조건과 행동 편집')
-    st.caption('조건 설정 → 현재 신호 검증 → 주문안 미리보기 → 명시적으로 적용')
+    st.caption('조건 설정, 현재 신호 검증, 주문안 미리보기와 적용을 한 화면에서 순서대로 진행합니다.')
     codes = strategies['code'].astype(str).tolist()
     if not codes:
         st.info('전략 관리에서 전략을 먼저 추가하세요.')
@@ -142,7 +142,19 @@ def render(strategies, holdings, priced_view, as_of, fetch):
     for i,c in enumerate(spec['conditions']):
         label = f"{c.get('ticker','후보')} {OPERATORS.get(c.get('op'), '조건 미선택')}"
         sentences.append((f"{c.get('connector','AND')} " if i else '') + label)
-    st.info(' → '.join([' '.join(sentences), f"충족: {ACTIONS[spec['onPass']['action']]}", f"미충족: {ACTIONS[spec['onFail']['action']]}"]))
+    summary=st.columns(3)
+    with summary[0]:
+        with st.container(border=True):
+            st.caption('판정 조건')
+            st.write(' '.join(sentences) or '조건 없음')
+    with summary[1]:
+        with st.container(border=True):
+            st.caption('조건 충족 시')
+            st.write(ACTIONS[spec['onPass']['action']])
+    with summary[2]:
+        with st.container(border=True):
+            st.caption('조건 미충족 시')
+            st.write(ACTIONS[spec['onFail']['action']])
     result = evaluate(spec, sub, as_of, fetch)
     st.write(f"**{result['status']}** · {result['message']} · 다음 기준일: {result.get('next_run','—')}")
     if result['evidence']:
