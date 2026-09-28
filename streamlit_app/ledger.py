@@ -200,7 +200,7 @@ def order_status(run, actions):
         quantity=float(pd.to_numeric(history.get('actual_shares',pd.Series(dtype=float)),errors='coerce').sum())
         cancelled=history.get('status',pd.Series(dtype=str)).eq('취소').any()
         state='취소' if cancelled else '완료' if quantity>=abs(order['제안수량'])-1e-8 else '부분 체결' if quantity else '미실행'
-        rows.append({'주문ID':order['주문ID'],'전략':order['전략'],'티커':order['티커'],'상태':state,
+        rows.append({'주문ID':order['주문ID'],'전략':order['전략'],'종목':order.get('종목',order['티커']),'티커':order['티커'],'상태':state,
                      '제안수량':abs(order['제안수량']),'누적체결':quantity,'잔여수량':max(0.,abs(order['제안수량'])-quantity)})
     return pd.DataFrame(rows)
 
@@ -310,3 +310,4 @@ def parse_table(raw):
         return pd.read_csv(io.StringIO(text),sep=sep,dtype={'ticker':str,'strategy':str,'code':str})
     except Exception as exc:
         raise DataError('표를 읽지 못했습니다. CSV/TSV 헤더를 확인하세요') from exc
+
