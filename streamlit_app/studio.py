@@ -4,6 +4,7 @@ import json
 import pandas as pd
 import streamlit as st
 from streamlit_app.rules import ACTIONS, OPERATORS, FREQUENCIES, evaluate
+from streamlit_app.ui import numeric_column_config, prefer_asset_names
 
 
 def new_spec():
@@ -56,9 +57,9 @@ def render(strategies, holdings, priced_view, as_of, fetch):
             frame['tickers'] = frame['tickers'].map(lambda x: ','.join(x) if isinstance(x,list) else x)
             frame['months_list'] = frame['months_list'].map(lambda x: ','.join(map(str,x)) if isinstance(x,list) else x)
             frame = st.data_editor(frame, num_rows='dynamic', hide_index=True, use_container_width=True,
-                key=key+'_table', column_config={'op':st.column_config.SelectboxColumn(options=list(OPERATORS)),
+                key=key+'_table', column_config=numeric_column_config(frame.columns, {'op':st.column_config.SelectboxColumn(options=list(OPERATORS)),
                 'connector':st.column_config.SelectboxColumn(options=['AND','OR']),
-                'frequency':st.column_config.SelectboxColumn(options=list(FREQUENCIES))})
+                'frequency':st.column_config.SelectboxColumn(options=list(FREQUENCIES))}))
             spec['conditions'] = [{k:v for k,v in r.items() if pd.notna(v) and v != ''} for r in frame.to_dict('records')]
         else:
             for i, condition in enumerate(spec['conditions']):
@@ -158,12 +159,15 @@ def render(strategies, holdings, priced_view, as_of, fetch):
     result = evaluate(spec, sub, as_of, fetch)
     st.write(f"**{result['status']}** · {result['message']} · 다음 기준일: {result.get('next_run','—')}")
     if result['evidence']:
-        st.dataframe(pd.DataFrame(result['evidence']).style.format({'현재값':'{:,.0f}','기준값':'{:,.0f}'}), hide_index=True, use_container_width=True)
+        evidence = prefer_asset_names(pd.DataFrame(result['evidence']), holdings)
+        st.dataframe(evidence, column_config=numeric_column_config(evidence.columns), hide_index=True, use_container_width=True)
     if result.get('ranking'):
-        st.dataframe(pd.DataFrame(result['ranking']).style.format({'모멘텀':'{:.2%}'}), hide_index=True)
+        ranking = prefer_asset_names(pd.DataFrame(result['ranking']), holdings)
+        st.dataframe(ranking.style.format({'모멘텀':'{:.2%}'}), hide_index=True)
     preview = pd.DataFrame([{'티커':t,'현재평가액':v,'목표평가액':result['targets'][t], '예상매매액':result['targets'][t]-v}
                             for t,v in zip(sub['ticker'],sub['평가액'])])
-    st.dataframe(preview, hide_index=True, use_container_width=True)
+    preview = prefer_asset_names(preview, holdings)
+    st.dataframe(preview, column_config=numeric_column_config(preview.columns), hide_index=True, use_container_width=True)
     version = st.text_input('적용할 버전', str(row.get('version','1.0')), key=key+'_version')
     note = st.text_input('변경 이유', key=key+'_note')
     if st.button('검토한 규칙 적용', type='primary', key=key+'_save', disabled=not spec['conditions'] or result['status']=='계산 차단'):
@@ -183,3 +187,4 @@ def render(strategies, holdings, priced_view, as_of, fetch):
         st.session_state.dirty = True
         st.success('세션에 적용했습니다. 기록 화면에서 Strategies를 복사하여 시트에 저장하세요.')
         st.rerun()
+
