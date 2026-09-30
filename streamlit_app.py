@@ -8,6 +8,7 @@ import math
 from html import escape
 import pandas as pd
 import plotly.express as px
+import plotly.io as pio
 import streamlit as st
 from streamlit_app import engine, studio
 from streamlit_app.data import (DataError, load_default_holdings, load_default_strategies,
@@ -34,14 +35,16 @@ numeric_column_config = ui_helpers.numeric_column_config
 allocation_status_frame = ui_helpers.allocation_status_frame
 style_allocation_rows = ui_helpers.style_allocation_rows
 
+pio.templates.default='plotly_dark'
 st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layout='wide')
 st.markdown('''<style>
 :root{
-  font-size:16px;color-scheme:light;
-  --warm-bg:#f7f3ee;--warm-surface:#fffcf8;--warm-ink:#2e312f;
-  --warm-muted:#77736d;--warm-border:#e7ded5;
-  --terracotta:#c86b45;--terracotta-dark:#8b4d32;--terracotta-soft:#f6e4db;
-  --sage:#587064;--deep-green:#24312b;
+  font-size:16px;color-scheme:dark;
+  --warm-bg:#0a0d12;--warm-surface:#111621;--warm-ink:#e6eaf1;
+  --warm-muted:#a6b0c0;--warm-border:#2a3346;
+  --terracotta:#f7931a;--terracotta-dark:#db7e0d;--terracotta-soft:#382815;
+  --sage:#8bdba6;--deep-green:#0e1218;
+  --terminal-info:#8bd1fa;--terminal-red:#ffa29a;
 }
 html,body,.stApp{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;line-height:1.55}
 .material-symbols-rounded,.material-symbols-outlined,.material-icons,[data-testid="stIconMaterial"]{
@@ -52,48 +55,56 @@ html,body,.stApp{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto S
   -webkit-font-feature-settings:"liga"!important;-webkit-font-smoothing:antialiased!important;
 }
 [data-testid="stAppViewContainer"]{background:var(--warm-bg);color:var(--warm-ink)}
-[data-testid="stHeader"]{background:color-mix(in srgb,var(--warm-bg) 88%,transparent)}
-.block-container{max-width:1360px;padding:2.5rem 2rem 4rem}
-h1{font-size:clamp(2rem,3vw,2.55rem)!important;line-height:1.2!important;letter-spacing:-.035em!important;margin-bottom:.45rem!important}
-h2{font-size:1.5rem!important;line-height:1.35!important;letter-spacing:-.025em!important;margin-top:1.8rem!important}
+[data-testid="stHeader"]{background:color-mix(in srgb,var(--warm-bg) 90%,transparent)}
+.block-container{max-width:1440px;padding:1.7rem 2rem 4rem}
+h1{font-size:clamp(1.8rem,2.6vw,2.3rem)!important;line-height:1.25!important;letter-spacing:-.03em!important;margin-bottom:.45rem!important}
+h2{font-size:1.42rem!important;line-height:1.35!important;letter-spacing:-.02em!important;margin-top:1.65rem!important}
 h3{font-size:1.2rem!important;line-height:1.4!important;letter-spacing:-.015em!important}
 p,li{font-size:1rem;line-height:1.6}
 [data-testid="stCaptionContainer"] p{font-size:.9rem!important;line-height:1.55!important;color:var(--warm-muted)!important}
 [data-testid="stWidgetLabel"] p{font-size:.95rem!important;font-weight:650!important;line-height:1.45!important}
-[data-testid="stMetricValue"]{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.72rem!important;line-height:1.25!important}
+[data-testid="stMetricValue"]{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.72rem!important;line-height:1.25!important;font-variant-numeric:tabular-nums}
 [data-testid="stMetricLabel"] p{font-size:.9rem!important;font-weight:650!important}
-[data-testid="stMetric"]{padding:1rem 1.05rem;border:1px solid var(--warm-border);border-radius:14px;background:var(--warm-surface)}
-[data-testid="stSidebar"]{border-right:1px solid #3a4b43;background:var(--deep-green);color:#f9f5ef}
-[data-testid="stSidebar"] p,[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3,[data-testid="stSidebar"] label{color:#f9f5ef!important}
-[data-testid="stSidebar"] [role="radiogroup"] label{min-height:42px;padding:.3rem .45rem;border-radius:8px}
+[data-testid="stMetric"]{padding:1rem 1.05rem;border:1px solid var(--warm-border);border-radius:6px;background:var(--warm-surface)}
+[data-testid="stSidebar"]{border-right:1px solid #1e2533;background:var(--deep-green);color:var(--warm-ink)}
+[data-testid="stSidebar"] p,[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3,[data-testid="stSidebar"] label{color:var(--warm-ink)!important}
+[data-testid="stSidebar"] [role="radiogroup"] label{min-height:44px;padding:.35rem .55rem;border-left:2px solid transparent;border-radius:3px}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:#1a2130;border-left-color:var(--terracotta)}
 [data-testid="stSidebar"] [role="radiogroup"] p{font-size:.96rem!important;font-weight:600!important}
-.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{min-height:44px;border-radius:10px;border-color:color-mix(in srgb,var(--terracotta) 55%,var(--warm-border));font-size:.96rem!important;font-weight:650!important;padding:.55rem 1rem!important}
+.terminal-brand{display:flex;align-items:center;gap:.7rem;padding:.1rem 0 .45rem}
+.terminal-brand-mark{width:32px;height:32px;display:grid;place-items:center;border-radius:3px;background:var(--terracotta);color:#0a0d12;font:800 1rem ui-monospace,SFMono-Regular,Menlo,monospace}
+.terminal-brand-name{font-weight:750;line-height:1.1}.terminal-brand-sub{font:600 .7rem ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;color:var(--warm-muted)}
+.terminal-status{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem 1rem;padding:.65rem .85rem;margin-bottom:1.25rem;border:1px solid var(--warm-border);border-radius:5px;background:#0e1218;color:var(--warm-muted);font:600 .78rem ui-monospace,SFMono-Regular,Menlo,monospace}
+.terminal-status b{color:var(--warm-ink);font-weight:650}.terminal-status .ready{color:var(--sage)}.terminal-status .waiting{color:var(--terracotta)}.terminal-status .blocked{color:var(--terminal-red)}
+.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{min-height:44px;border-radius:4px;border-color:var(--warm-border);font-size:.96rem!important;font-weight:650!important;padding:.55rem 1rem!important}
+.stButton>button[kind="primary"],[data-testid="stFormSubmitButton"]>button[kind="primary"]{background:var(--terracotta);border-color:var(--terracotta);color:#0a0d12}
+.stButton>button:hover,.stDownloadButton>button:hover{border-color:var(--terracotta)}
 [data-baseweb="input"] input,[data-baseweb="select"] *{font-size:.96rem!important}
 [data-baseweb="tab-list"] button{min-height:44px;padding:.65rem .9rem!important}
 [data-baseweb="tab-list"] button p{font-size:.96rem!important;font-weight:650!important}
 [data-testid="stExpander"] summary p{font-size:1rem!important;font-weight:650!important}
 [data-testid="stAlert"] p{font-size:.95rem!important;line-height:1.55!important}
-.eyebrow{font-size:.78rem;line-height:1.4;letter-spacing:.14em;color:var(--terracotta);font-weight:750;margin-bottom:.45rem}
+.eyebrow{font:750 .78rem ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.4;letter-spacing:.14em;color:var(--terracotta);margin-bottom:.45rem}
 .page-description{font-size:1rem;line-height:1.6;color:var(--warm-muted);margin:0 0 1.5rem}
 .workflow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.4rem;margin:.25rem 0 1.5rem}
 .workflow-step{display:flex;align-items:center;gap:.55rem;min-height:48px;padding:.55rem .6rem;border:1px solid transparent;border-radius:11px;background:transparent}
-.workflow-step.is-active{border-color:#d99b7b;background:var(--terracotta-soft)}
+.workflow-step.is-active{border-color:#88551d;background:var(--terracotta-soft)}
 .workflow-step.is-done{color:var(--sage)}
-.workflow-index{display:grid;place-items:center;flex:0 0 25px;height:25px;border-radius:999px;background:#d9d4ce;color:#665f58;font-size:.76rem;font-weight:800}
-.workflow-step.is-done .workflow-index{background:var(--sage);color:#fff}
-.workflow-step.is-active .workflow-index{background:var(--terracotta);color:#fff}
+.workflow-index{display:grid;place-items:center;flex:0 0 25px;height:25px;border-radius:3px;background:#2a3346;color:var(--warm-ink);font-size:.76rem;font-weight:800}
+.workflow-step.is-done .workflow-index{background:#2d6546;color:#e6f9eb}
+.workflow-step.is-active .workflow-index{background:var(--terracotta);color:#0a0d12}
 .workflow-label{font-size:.9rem;font-weight:680;line-height:1.35;word-break:keep-all}
 .target-legend{display:flex;flex-wrap:wrap;gap:.5rem;margin:.25rem 0 .8rem}
 .target-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.32rem .62rem;border-radius:999px;font-size:.85rem;font-weight:720;border:1px solid transparent}
-.target-chip.under{background:#e7f1fb;color:#245f8f;border-color:#c8dff2}
-.target-chip.met{background:#e8f3ec;color:#32694c;border-color:#cce1d3}
-.target-chip.over{background:#f8e8e5;color:#91483d;border-color:#edcbc5}
+.target-chip.under{background:#143047;color:#9bd6ff;border-color:#315b77}
+.target-chip.met{background:#17382c;color:#a0e3b8;border-color:#32694d}
+.target-chip.over{background:#422824;color:#ffb8ad;border-color:#814f48}
 .st-key-mobile_toolbar,.st-key-mobile_monthly_allocation_status,.st-key-mobile_order_allocation_status,.st-key-mobile_holdings_editor{display:none}
 .asset-card-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:.75rem;margin:.45rem 0 1.25rem}
-.asset-card{border:1px solid var(--warm-border);border-left:4px solid var(--sage);border-radius:13px;background:var(--warm-surface);padding:1rem;min-width:0}
-.asset-card.status-under{border-left-color:#4c87b5;background:#f5f9fe}
-.asset-card.status-over{border-left-color:#b96659;background:#fdf7f5}
-.asset-card.status-met{border-left-color:#67a17a;background:#f7fbf8}
+.asset-card{border:1px solid var(--warm-border);border-left:4px solid var(--sage);border-radius:5px;background:var(--warm-surface);padding:1rem;min-width:0}
+.asset-card.status-under{border-left-color:#6fbaf0;background:#111e2c}
+.asset-card.status-over{border-left-color:#f08f84;background:#271b1c}
+.asset-card.status-met{border-left-color:#80d59d;background:#14221c}
 .asset-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.55rem}
 .asset-card-name{font-weight:750;font-size:1rem;line-height:1.45;overflow-wrap:anywhere}
 .asset-card-meta{color:var(--warm-muted);font-size:.83rem;margin:.25rem 0 .85rem;overflow-wrap:anywhere}
@@ -104,9 +115,19 @@ p,li{font-size:1rem;line-height:1.6}
 .asset-card-order{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline;border-top:1px solid var(--warm-border);padding-top:.7rem;font-size:.88rem}
 .asset-card-order strong{overflow-wrap:anywhere;text-align:right}
 .asset-card-gap{font-weight:750;font-size:.85rem;margin-top:.25rem}
-.status-under .asset-card-gap{color:#245f8f}
-.status-over .asset-card-gap{color:#91483d}
-.status-met .asset-card-gap{color:#32694c}
+.status-under .asset-card-gap{color:#9bd6ff}
+.status-over .asset-card-gap{color:#ffb8ad}
+.status-met .asset-card-gap{color:#a0e3b8}
+.st-key-builder_toolbar,.st-key-builder_condition_area,.st-key-builder_action_area{border:1px solid var(--warm-border);background:var(--warm-surface);border-radius:5px;padding:1rem}
+[class*="st-key-builder_condition_"]{border-color:var(--warm-border)!important;background:#0e1218}
+.st-key-builder_then{border-left:3px solid #45bb77!important;background:#0e1218}
+.st-key-builder_else{border-left:3px solid #e47b74!important;background:#0e1218}
+.builder-section{font:700 .78rem ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.09em;color:var(--warm-muted);margin-bottom:.6rem}
+.builder-section .then{color:var(--sage)}.builder-section .else{color:var(--terminal-red)}
+.rule-preview{border:1px solid var(--warm-border);border-radius:5px;background:var(--warm-bg);padding:1rem;line-height:1.8;font-size:.9rem;overflow-wrap:anywhere}
+.rule-preview-label{color:var(--warm-muted);font:700 .72rem ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.1em;margin-bottom:.55rem}
+.rule-preview .signal{color:var(--terracotta)}.rule-preview .number{color:var(--terminal-info)}.rule-preview .pass{color:var(--sage)}.rule-preview .fail{color:var(--terminal-red)}
+.rule-preview .branch{font:750 .8rem ui-monospace,SFMono-Regular,Menlo,monospace;margin-right:.35rem}
 @media(max-width:800px){
   .block-container{padding:1.1rem 1rem calc(4.5rem + env(safe-area-inset-bottom))}
   h1{font-size:2rem!important}
@@ -118,7 +139,7 @@ p,li{font-size:1rem;line-height:1.6}
   [data-testid="stMain"] [data-testid="stHorizontalBlock"]{flex-wrap:wrap;gap:.7rem}
   [data-testid="stMain"] :is([data-testid="column"],[data-testid="stColumn"]){min-width:0!important;width:100%!important;flex:1 1 100%!important}
   [data-testid="stMain"] .st-key-monthly_metrics :is([data-testid="column"],[data-testid="stColumn"]){width:calc(50% - .35rem)!important;flex:1 1 calc(50% - .35rem)!important}
-  .st-key-mobile_toolbar{display:block;background:var(--warm-surface);border:1px solid var(--warm-border);border-radius:14px;padding:.85rem;margin-bottom:1.1rem}
+  .st-key-mobile_toolbar{display:block;background:var(--warm-surface);border:1px solid var(--warm-border);border-radius:5px;padding:.85rem;margin-bottom:1.1rem}
   .st-key-mobile_monthly_allocation_status,.st-key-mobile_order_allocation_status,.st-key-mobile_holdings_editor{display:block}
   .st-key-desktop_monthly_allocation_status,.st-key-desktop_order_allocation_status,.st-key-desktop_holdings_editor{display:none}
   .workflow{grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem;margin-bottom:1.1rem}
@@ -354,8 +375,9 @@ st.session_state.setdefault('sidebar_as_of',today)
 st.session_state.setdefault('mobile_as_of',st.session_state.sidebar_as_of)
 
 with st.sidebar:
-    st.markdown('### ◈ REBALANCE')
-    st.caption('개인 자산배분 운영')
+    st.markdown('<div class="terminal-brand"><span class="terminal-brand-mark">R</span>'
+        '<span><span class="terminal-brand-name">Rebalance</span><br>'
+        '<span class="terminal-brand-sub">ALLOCATION DESK</span></span></div>',unsafe_allow_html=True)
     page=st.radio('작업 공간',PAGES,key='workspace_page',label_visibility='collapsed',
         on_change=sync_page,args=('workspace_page','mobile_workspace_page'))
     st.divider()
@@ -393,7 +415,21 @@ with st.container(key='mobile_toolbar'):
     st.download_button('전체 작업 백업',backup_bytes(workspace(),working_draft()),
         'rebalance-backup.json','application/json',key='mobile_backup',use_container_width=True)
 
-st.markdown('<div class="eyebrow">ALLOCATION WORKSPACE</div>',unsafe_allow_html=True)
+current_status=st.session_state.get('run')
+if current_status and current_status['date']==str(as_of):
+    status_text='일부 계좌 확인 필요' if current_status['errors'] else '평가 완료'
+    status_class='blocked' if current_status['errors'] else 'ready'
+else:
+    status_text='종가 조회 대기'
+    status_class='waiting'
+record_text='DEMO' if st.session_state.demo else '저장할 변경사항' if st.session_state.get('dirty') else '원장 확인'
+st.markdown(
+    '<div class="terminal-status" aria-label="평가 상태">'
+    f'<span class="{status_class}">● {escape(status_text)}</span>'
+    f'<span>기준일 <b>{as_of.isoformat()}</b></span>'
+    f'<span>기록 <b>{escape(record_text)}</b></span>'
+    '<span>수동 주문</span></div>',unsafe_allow_html=True)
+st.markdown('<div class="eyebrow">REBALANCE / WORKSPACE</div>',unsafe_allow_html=True)
 st.title(page)
 st.markdown(f'<p class="page-description">{PAGE_DESCRIPTIONS[page]}</p>',unsafe_allow_html=True)
 if 'run' in st.session_state and st.session_state.run['date']!=str(as_of):
@@ -618,36 +654,36 @@ elif page=='주문안':
         st.button('기록 화면으로 이동',use_container_width=True,on_click=navigate,args=('기록',))
 
 elif page=='전략실':
-    st.caption('현재 운용 규칙을 편집합니다. 연간 전략 연구와 AI 보조는 이번 범위에 포함되지 않습니다.')
-    st.subheader('전략별 운영 설정')
-    with st.form('strategy_settings'):
-        edited=edit_frame(st.session_state.strategies,hide_index=True,num_rows='dynamic',use_container_width=True,
-            column_config={'tolerance_pct':st.column_config.NumberColumn('허용 괴리 (%p)',min_value=0.,max_value=100.),
-                           'cash_reserve':st.column_config.NumberColumn('현금 유보액 (원)',min_value=0.,format='%,.0f'),
-                           'fractional_us':st.column_config.CheckboxColumn('미국 소수점 수량 허용')})
-        st.caption('허용 괴리 2는 목표 대비 2%p를 뜻합니다. CASH는 원화만 지원하며 외화 현금은 원화 환산 후 직접 입력합니다.')
-        if st.form_submit_button('전략 설정 검증·적용'):
-            try:
-                normalized=normalize_strategies(edited)
-                old=st.session_state.strategies
-                versions=st.session_state.strategy_versions.copy()
-                if not old.equals(normalized):
-                    archive=old.copy();archive['archived_at']=pd.Timestamp.now(tz='UTC').isoformat()
-                    versions=pd.concat([versions,archive],ignore_index=True).drop_duplicates()
-                install({'strategies':normalized,'strategy_versions':versions})
-                st.success('설정을 적용했습니다. Sheets 저장 또는 전체 백업이 필요합니다.')
-            except DataError as e:st.error(str(e))
+    st.caption('조건과 행동은 카드에서 편집합니다. 실제 종가를 조회하면 신호와 목표 금액을 검증할 수 있습니다.')
     run=st.session_state.get('run')
-    if run and not run['view'].empty:
-        def studio_prices(t,m,d):
-            code=st.session_state.get('studio_code',st.session_state.strategies.code.iloc[0])
-            row=st.session_state.strategies[st.session_state.strategies.code.eq(code)].iloc[0]
-            key=f'studio_{code}_{row.get("version","1")}'
-            adjusted=st.session_state.get(key,{}).get('signal_adjusted',False)
-            from streamlit_app.market import validate_series
-            return validate_series(prices(t,engine.resolved_market(t,m),d,adjusted),d,engine.resolved_market(t,m))
-        studio.render(st.session_state.strategies,st.session_state.holdings,run['view'],as_of,studio_prices)
-    else:st.info('종가 조회 후 규칙 편집과 실제 신호 미리보기가 열립니다. JSON 파라미터는 위 표에서도 편집할 수 있습니다.')
+    def studio_prices(t,m,d):
+        code=st.session_state.get('studio_code',st.session_state.strategies.code.iloc[0])
+        row=st.session_state.strategies[st.session_state.strategies.code.eq(code)].iloc[0]
+        key=f'studio_{code}_{row.get("version","1")}'
+        adjusted=st.session_state.get(key,{}).get('signal_adjusted',False)
+        from streamlit_app.market import validate_series
+        return validate_series(prices(t,engine.resolved_market(t,m),d,adjusted),d,engine.resolved_market(t,m))
+    priced_view=run['view'] if run and run['date']==str(as_of) and not run['view'].empty else None
+    studio.render(st.session_state.strategies,st.session_state.holdings,priced_view,as_of,studio_prices)
+    with st.expander('고급 전략 설정 · 표 편집'):
+        st.caption('규칙 JSON을 직접 관리하거나 허용 괴리·현금 유보액을 바꿀 때 사용합니다.')
+        with st.form('strategy_settings'):
+            edited=edit_frame(st.session_state.strategies,hide_index=True,num_rows='dynamic',use_container_width=True,
+                column_config={'tolerance_pct':st.column_config.NumberColumn('허용 괴리 (%p)',min_value=0.,max_value=100.),
+                               'cash_reserve':st.column_config.NumberColumn('현금 유보액 (원)',min_value=0.,format='%,.0f'),
+                               'fractional_us':st.column_config.CheckboxColumn('미국 소수점 수량 허용')})
+            st.caption('허용 괴리 2는 목표 대비 2%p를 뜻합니다. CASH는 원화만 지원하며 외화 현금은 원화 환산 후 직접 입력합니다.')
+            if st.form_submit_button('전략 설정 검증·적용'):
+                try:
+                    normalized=normalize_strategies(edited)
+                    old=st.session_state.strategies
+                    versions=st.session_state.strategy_versions.copy()
+                    if not old.equals(normalized):
+                        archive=old.copy();archive['archived_at']=pd.Timestamp.now(tz='UTC').isoformat()
+                        versions=pd.concat([versions,archive],ignore_index=True).drop_duplicates()
+                    install({'strategies':normalized,'strategy_versions':versions})
+                    st.success('설정을 적용했습니다. Sheets 저장 또는 전체 백업이 필요합니다.')
+                except DataError as e:st.error(str(e))
 
 elif page=='기록':
     tabs=st.tabs(['평가 확정·Sheets 출력','기록·성과','입출금'])
