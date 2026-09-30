@@ -17,7 +17,8 @@ from streamlit_app.ledger import (TABLES, empty_workspace, backup_bytes, restore
     validate_actions, snapshots_match, load_frozen_run, order_status, cancel_orders)
 from streamlit_app.performance import summarize, validate_flows, monthly_risk, benchmark_index
 from streamlit_app.sheets_sync import load_workspace, save_workspace
-from streamlit_app.ui import numeric_column_config
+from streamlit_app.ui import (numeric_column_config, allocation_status_frame,
+    style_allocation_rows)
 
 st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layout='wide')
 st.markdown('''<style>
@@ -60,11 +61,19 @@ p,li{font-size:1rem;line-height:1.6}
 [data-testid="stAlert"] p{font-size:.95rem!important;line-height:1.55!important}
 .eyebrow{font-size:.78rem;line-height:1.4;letter-spacing:.14em;color:var(--terracotta);font-weight:750;margin-bottom:.45rem}
 .page-description{font-size:1rem;line-height:1.6;color:var(--warm-muted);margin:0 0 1.5rem}
-.workflow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.65rem;margin:.25rem 0 1.5rem}
-.workflow-step{display:flex;align-items:center;gap:.65rem;min-height:54px;padding:.7rem .8rem;border:1px solid var(--warm-border);border-radius:14px;background:var(--warm-surface);box-shadow:0 4px 18px rgba(55,45,35,.035)}
-.workflow-step:first-child{border-color:#d99b7b;background:var(--terracotta-soft)}
-.workflow-index{display:grid;place-items:center;flex:0 0 26px;height:26px;border-radius:999px;background:var(--terracotta);color:#fff;font-size:.78rem;font-weight:800}
+.workflow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.4rem;margin:.25rem 0 1.5rem}
+.workflow-step{display:flex;align-items:center;gap:.55rem;min-height:48px;padding:.55rem .6rem;border:1px solid transparent;border-radius:11px;background:transparent}
+.workflow-step.is-active{border-color:#d99b7b;background:var(--terracotta-soft)}
+.workflow-step.is-done{color:var(--sage)}
+.workflow-index{display:grid;place-items:center;flex:0 0 25px;height:25px;border-radius:999px;background:#d9d4ce;color:#665f58;font-size:.76rem;font-weight:800}
+.workflow-step.is-done .workflow-index{background:var(--sage);color:#fff}
+.workflow-step.is-active .workflow-index{background:var(--terracotta);color:#fff}
 .workflow-label{font-size:.9rem;font-weight:680;line-height:1.35;word-break:keep-all}
+.target-legend{display:flex;flex-wrap:wrap;gap:.5rem;margin:.25rem 0 .8rem}
+.target-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.32rem .62rem;border-radius:999px;font-size:.85rem;font-weight:720;border:1px solid transparent}
+.target-chip.under{background:#e7f1fb;color:#245f8f;border-color:#c8dff2}
+.target-chip.met{background:#e8f3ec;color:#32694c;border-color:#cce1d3}
+.target-chip.over{background:#f8e8e5;color:#91483d;border-color:#edcbc5}
 @media(max-width:800px){
   .block-container{padding:1.25rem 1rem 4.5rem}
   h1{font-size:2rem!important}
@@ -74,7 +83,7 @@ p,li{font-size:1rem;line-height:1.6}
   [data-baseweb="tab-list"]{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
   .workflow{display:flex;overflow-x:auto;gap:.55rem;margin-right:-1rem;padding-right:1rem;padding-bottom:.35rem;scroll-snap-type:x mandatory;scrollbar-width:none}
   .workflow::-webkit-scrollbar,[data-baseweb="tab-list"]::-webkit-scrollbar{display:none}
-  .workflow-step{flex:0 0 8.5rem;min-height:78px;align-items:flex-start;flex-direction:column;gap:.35rem;scroll-snap-align:start}
+  .workflow-step{flex:0 0 8.5rem;min-height:70px;align-items:flex-start;flex-direction:column;gap:.35rem;scroll-snap-align:start}
 }
 @media(max-width:460px){
   .page-description{font-size:.94rem;margin-bottom:1.15rem}
@@ -93,9 +102,33 @@ PAGE_DESCRIPTIONS={
 }
 
 
-def workflow_steps(labels):
-    items=''.join(f'<div class="workflow-step"><span class="workflow-index">{i}</span><span class="workflow-label">{label}</span></div>' for i,label in enumerate(labels,1))
-    st.markdown(f'<div class="workflow" aria-label="운영 단계">{items}</div>',unsafe_allow_html=True)
+def workflow_steps(labels, active=1, completed=0):
+    """Show progress as a status tracker; navigation is provided by real buttons."""
+    items=[]
+    for i,label in enumerate(labels,1):
+        state=' is-done' if i<=completed else ' is-active' if i==active else ''
+        items.append(f'<div class="workflow-step{state}"><span class="workflow-index">{i}</span><span class="workflow-label">{label}</span></div>')
+    st.markdown(f'<div class="workflow" aria-label="운영 진행 상태">{"".join(items)}</div>',unsafe_allow_html=True)
+
+
+def navigate(page):
+    st.session_state.workspace_page=page
+
+
+def target_legend(frame):
+    counts=frame['목표상태'].value_counts() if not frame.empty else {}
+    st.markdown(
+        '<div class="target-legend" aria-label="목표 비중 상태 범례">'
+        f'<span class="target-chip under">미달 {int(counts.get("미달",0))}</span>'
+        f'<span class="target-chip met">충족 {int(counts.get("충족",0))}</span>'
+        f'<span class="target-chip over">초과 {int(counts.get("초과",0))}</span>'
+        '</div>',unsafe_allow_html=True)
+
+
+def show_allocation_status(frame, columns, key):
+    visible=frame[columns].copy()
+    st.dataframe(style_allocation_rows(visible),hide_index=True,use_container_width=True,key=key,
+        column_config=numeric_column_config(visible.columns))
 
 @st.cache_data(ttl=900,show_spinner=False)
 def prices(ticker,market,day,adjusted=False):
@@ -207,7 +240,8 @@ if remote_enabled and not st.session_state.get('remote_loaded'):
 with st.sidebar:
     st.markdown('### ◈ REBALANCE')
     st.caption('개인 자산배분 운영')
-    page=st.radio('작업 공간',['이번 달','자산 현황','주문안','전략실','기록','설정'],label_visibility='collapsed')
+    page=st.radio('작업 공간',['이번 달','자산 현황','주문안','전략실','기록','설정'],
+        key='workspace_page',label_visibility='collapsed')
     st.divider()
     today=datetime.now(ZoneInfo('Asia/Seoul')).date()
     as_of=st.date_input('평가 기준일',today,max_value=today,help='월말에 한정하지 않습니다. 분기 규칙은 선택한 달이 3·6·9·12월인지 확인합니다.')
@@ -236,7 +270,13 @@ if 'run' in st.session_state and st.session_state.run['date']!=str(as_of):
     st.warning(f"현재 평가 결과는 {st.session_state.run['date']} 기준입니다. 새 기준일로 다시 조회하세요.")
 
 if page=='이번 달':
-    workflow_steps(['보유내역 확인','종가 확정','규칙 판정','주문안 검토','기록'])
+    current_run=st.session_state.get('run')
+    if current_run and not current_run.get('errors'):
+        workflow_steps(['보유내역 확인','종가 확정','규칙 판정','주문안 검토','기록'],active=4,completed=3)
+    elif current_run:
+        workflow_steps(['보유내역 확인','종가 확정','규칙 판정','주문안 검토','기록'],active=3,completed=2)
+    else:
+        workflow_steps(['보유내역 확인','종가 확정','규칙 판정','주문안 검토','기록'],active=2,completed=1)
     with st.expander('1 · 보유수량과 현금 확인',expanded='run' not in st.session_state):
         with st.form('holdings_form'):
             edited=edit_frame(st.session_state.holdings,num_rows='dynamic',hide_index=True,use_container_width=True,
@@ -292,7 +332,21 @@ if page=='이번 달':
                     if decision.get('evidence'):
                         with st.expander('판정 근거'):
                             show_frame(pd.DataFrame(decision['evidence']),hide_index=True,use_container_width=True)
-            st.info('다음: 주문안에서 수량과 기존 현금을 검토한 뒤 기록 화면에서 평가를 확정하세요.')
+            if not plan.empty:
+                st.subheader('4 · 목표 비중 상태')
+                st.caption('현재 비중과 이번 규칙 판정의 실행 목표를 비교합니다. 전략별 허용 괴리 안은 충족으로 표시합니다.')
+                status_frame=allocation_status_frame(plan,st.session_state.strategies)
+                target_legend(status_frame)
+                show_allocation_status(status_frame,
+                    ['전략','종목','티커','목표상태','현재비중(%)','실행목표(%)','괴리(%p)','구분','제안수량'],
+                    'monthly_allocation_status')
+                detail_nav,order_nav=st.columns(2)
+                detail_nav.button('자산 현황 자세히 보기',use_container_width=True,
+                    on_click=navigate,args=('자산 현황',))
+                order_nav.button('주문안 검토하기',type='primary',use_container_width=True,
+                    on_click=navigate,args=('주문안',))
+            else:
+                st.info('이번 평가에서 생성된 주문안이 없습니다.')
         else:
             st.info('가격이 확정된 계좌가 없습니다. 입력값 또는 종가 확정 시점을 확인하세요.')
 
@@ -334,7 +388,12 @@ elif page=='주문안':
     if run and not run['plan'].empty:
         st.caption('실제 종가로 산정한 수동 주문안입니다. 비용·세금은 계산하지 않으며 매수는 기존 CASH 잔액으로 제한합니다.')
         plan=run['plan']
-        show_frame(plan[['전략','종목','티커','구분','기준종가','보유수량','기본목표(%)','실행목표(%)','목표조정액','제안수량','예상매매액','실행후비중(%)','예상잔여현금','주문예정일','근거']],hide_index=True,use_container_width=True)
+        status_plan=allocation_status_frame(plan,st.session_state.strategies)
+        st.caption('파랑은 목표 미달, 초록은 허용 괴리 이내 충족, 빨강은 목표 초과입니다. 미달·초과 종목을 우선 표시합니다.')
+        target_legend(status_plan)
+        show_allocation_status(status_plan,
+            ['전략','종목','티커','목표상태','현재비중(%)','실행목표(%)','괴리(%p)','구분','기준종가','보유수량','목표조정액','제안수량','예상매매액','실행후비중(%)','예상잔여현금','주문예정일','근거'],
+            'order_allocation_status')
         with st.expander('제안 수량 수정'):
             with st.form('revise_order_'+run['id']):
                 edited_order=edit_frame(plan[['주문ID','전략','종목','티커','제안수량']],disabled=['주문ID','전략','종목','티커'],hide_index=True,use_container_width=True)
@@ -385,6 +444,7 @@ elif page=='주문안':
         else:st.info('현재 제안된 거래가 없습니다.')
         if st.session_state.get('post_execution'):
             st.info('이 주문안은 체결 전 평가의 기록입니다. 다시 계산하려면 이번 달 화면에서 종가를 새로 조회하세요.')
+        st.button('기록 화면으로 이동',use_container_width=True,on_click=navigate,args=('기록',))
 
 elif page=='전략실':
     st.caption('현재 운용 규칙을 편집합니다. 연간 전략 연구와 AI 보조는 이번 범위에 포함되지 않습니다.')
