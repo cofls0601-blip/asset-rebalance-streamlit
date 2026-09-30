@@ -20,9 +20,9 @@ PERCENT_COLUMNS = {
 }
 
 TARGET_STATUS_STYLES = {
-    '미달': ('#143047', '#9bd6ff'),
-    '충족': ('#17382c', '#a0e3b8'),
-    '초과': ('#422824', '#ffb8ad'),
+    '미달': ('#e7f1fb', '#245f8f'),
+    '충족': ('#e8f3ec', '#32694c'),
+    '초과': ('#f8e8e5', '#91483d'),
 }
 
 
@@ -31,11 +31,11 @@ def numeric_column_config(columns, overrides=None):
     config = {}
     for column in columns:
         if column in MONEY_COLUMNS:
-            config[column] = st.column_config.NumberColumn(format='%,.0f')
+            config[column] = st.column_config.NumberColumn(format='localized')
         elif column in PRICE_COLUMNS:
-            config[column] = st.column_config.NumberColumn(format='%,.0f')
+            config[column] = st.column_config.NumberColumn(format='localized')
         elif column in QUANTITY_COLUMNS:
-            config[column] = st.column_config.NumberColumn(format='%,.4f')
+            config[column] = st.column_config.NumberColumn(format='%.4f')
         elif column in PERCENT_COLUMNS:
             config[column] = st.column_config.NumberColumn(format='%.2f')
     config.update(overrides or {})
@@ -94,11 +94,11 @@ def allocation_status_frame(plan, strategies):
 def style_allocation_rows(frame):
     """Apply calm, accessible status colors to allocation rows."""
     def row_style(row):
-        background, _ = TARGET_STATUS_STYLES.get(row.get('목표상태'), ('#111621', '#e6eaf1'))
+        background, _ = TARGET_STATUS_STYLES.get(row.get('목표상태'), ('#ffffff', '#2e312f'))
         return [f'background-color: {background}' for _ in row.index]
 
     def status_style(value):
-        background, foreground = TARGET_STATUS_STYLES.get(value, ('#111621', '#e6eaf1'))
+        background, foreground = TARGET_STATUS_STYLES.get(value, ('#ffffff', '#2e312f'))
         return f'background-color: {background}; color: {foreground}; font-weight: 750'
 
     styled = frame.style.apply(row_style, axis=1)
