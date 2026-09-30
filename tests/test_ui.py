@@ -79,6 +79,25 @@ class WorkspaceTests(unittest.TestCase):
         self.assertFalse(self.app.exception)
         self.assertEqual(self.app.sidebar.radio[0].value,'주문안')
 
+    def test_mobile_menu_and_date_stay_in_sync_with_sidebar(self):
+        next(box for box in self.app.selectbox if box.label=='메뉴').set_value('전략실').run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.sidebar.radio[0].value,'전략실')
+        self.app.sidebar.date_input[0].set_value(DAY).run()
+        self.assertEqual(self.app.date_input[0].value,DAY)
+
+    def test_mobile_account_quantity_updates_only_selected_holding(self):
+        before=self.app.session_state['holdings'].copy()
+        first=before.iloc[0]
+        label=f'{first["name"]} · {first.ticker} ({"원" if first.ticker=="CASH" else "주"})'
+        next(widget for widget in self.app.text_input if widget.label==label).set_value('1,234').run()
+        next(button for button in self.app.button if button.label=='선택 계좌 보유내역 적용').click().run()
+        self.assertFalse(self.app.exception)
+        after=self.app.session_state['holdings']
+        self.assertEqual(after.iloc[0].shares,1234.)
+        pd.testing.assert_frame_equal(after.iloc[1:].reset_index(drop=True),
+                                      before.iloc[1:].reset_index(drop=True))
+
     def test_remote_auth_load_once_and_explicit_save(self):
         from test_revised_spec import ws, run
         app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'streamlit_app.py'),default_timeout=30)
@@ -97,4 +116,3 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(app.session_state['remote_token'],'saved')
 
 if __name__=='__main__':unittest.main()
-
