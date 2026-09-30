@@ -3,8 +3,10 @@ import unittest
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
+import pandas as pd
 from streamlit.testing.v1 import AppTest
 from test_revised_spec import fetch, holdings, strategies, DAY, NOW
+from streamlit_app.ui import allocation_status_frame
 from streamlit_app.workflow import run_evaluation
 
 class WorkspaceTests(unittest.TestCase):
@@ -61,6 +63,22 @@ class WorkspaceTests(unittest.TestCase):
         self.navigate('설정');self.navigate('주문안')
         self.assertEqual(self.app.session_state['fills'].iloc[0]['실제수량'],2.)
 
+    def test_allocation_status_uses_strategy_tolerance(self):
+        plan=pd.DataFrame([
+            {'전략':'A','현재비중(%)':38.,'실행목표(%)':40.},
+            {'전략':'A','현재비중(%)':40.5,'실행목표(%)':40.},
+            {'전략':'A','현재비중(%)':43.,'실행목표(%)':40.},
+        ])
+        settings=pd.DataFrame([{'code':'A','tolerance_pct':1.}])
+        result=allocation_status_frame(plan,settings)
+        self.assertEqual(set(result['목표상태']),{'미달','충족','초과'})
+
+    def test_order_review_button_changes_workspace(self):
+        self.with_run();self.navigate('이번 달')
+        next(b for b in self.app.button if b.label=='주문안 검토하기').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.sidebar.radio[0].value,'주문안')
+
     def test_remote_auth_load_once_and_explicit_save(self):
         from test_revised_spec import ws, run
         app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'streamlit_app.py'),default_timeout=30)
@@ -79,3 +97,4 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(app.session_state['remote_token'],'saved')
 
 if __name__=='__main__':unittest.main()
+
