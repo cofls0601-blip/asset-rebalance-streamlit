@@ -7,6 +7,7 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 from test_revised_spec import fetch, holdings, strategies, DAY, NOW
 from streamlit_app.ui import allocation_status_frame
+from streamlit_app.studio import rule_preview_html
 from streamlit_app.workflow import run_evaluation
 
 class WorkspaceTests(unittest.TestCase):
@@ -97,6 +98,41 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(after.iloc[0].shares,1234.)
         pd.testing.assert_frame_equal(after.iloc[1:].reset_index(drop=True),
                                       before.iloc[1:].reset_index(drop=True))
+
+    def test_rule_builder_is_available_before_price_lookup(self):
+        self.navigate('전략실')
+        self.assertTrue(any(box.label=='편집할 전략' for box in self.app.selectbox))
+        self.assertTrue(any('규칙 문장 미리보기' in block.value for block in self.app.markdown))
+        self.assertTrue(next(button for button in self.app.button if button.label=='검토한 규칙 적용').disabled)
+        next(button for button in self.app.button if button.label=='이 조건 삭제').click().run()
+        self.assertFalse(self.app.exception)
+        code=self.app.session_state['studio_code']
+        self.assertEqual(self.app.session_state[f'studio_{code}_1.0']['conditions'],[])
+        next(button for button in self.app.button if button.label=='＋ 조건 추가').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(len(self.app.session_state[f'studio_{code}_1.0']['conditions']),1)
+
+    def test_rule_preview_uses_names_and_escapes_user_text(self):
+        spec={'scope':{'run':'monthly'},
+              'conditions':[{'op':'sma_above','ticker':'QQQ','months':10}],
+              'onPass':{'action':'buy_cash_pct','params':{'ticker':'QQQ','pct':50}},
+              'onFail':{'action':'notify','params':{'message':'<script>alert(1)</script>'}}}
+        preview=rule_preview_html(spec,{'QQQ':'나스닥 ETF'})
+        self.assertIn('나스닥 ETF',preview)
+        self.assertIn('10',preview)
+        self.assertIn('충족하면',preview)
+        self.assertNotIn('<script>',preview)
+
+    def test_switching_to_momentum_rank_uses_selected_winner(self):
+        self.navigate('전략실')
+        next(box for box in self.app.selectbox if box.label=='조건 종류').set_value('mom_rank').run()
+        self.assertFalse(self.app.exception)
+        code=self.app.session_state['studio_code']
+        spec=self.app.session_state[f'studio_{code}_1.0']
+        self.assertEqual(spec['conditions'][0]['ticker'],'__winner__')
+        next(box for box in self.app.text_input if box.label=='후보 티커 추가 (쉼표 구분)').set_value('SPY').run()
+        self.assertFalse(self.app.exception)
+        self.assertIn('SPY',self.app.session_state[f'studio_{code}_1.0']['conditions'][0]['tickers'])
 
     def test_remote_auth_load_once_and_explicit_save(self):
         from test_revised_spec import ws, run
