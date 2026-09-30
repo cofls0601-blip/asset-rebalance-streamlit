@@ -1,4 +1,5 @@
 """Shared presentation helpers; formatting never changes stored numeric values."""
+import pandas as pd
 import streamlit as st
 
 
@@ -15,7 +16,13 @@ QUANTITY_COLUMNS = {
 PERCENT_COLUMNS = {
     'target_pct', 'weight_pct', 'account_weight_pct', 'execution_target_pct',
     '비중(%)', '현재비중', '현재비중(%)', '기본목표(%)', '실행목표(%)', '실행후비중(%)',
-    '목표대비괴리(%p)', '증감률(%)',
+    '목표대비괴리(%p)', '괴리(%p)', '허용괴리(%p)', '증감률(%)',
+}
+
+TARGET_STATUS_STYLES = {
+    '미달': ('#e7f1fb', '#245f8f'),
+    '충족': ('#e8f3ec', '#32694c'),
+    '초과': ('#f8e8e5', '#91483d'),
 }
 
 
@@ -52,4 +59,50 @@ def prefer_asset_names(frame, holdings, ticker_column='티커', name_column='종
     insert_at = min(result.columns.get_loc(name_column), result.columns.get_loc(ticker_column))
     columns[insert_at:insert_at] = [name_column, ticker_column]
     return result[columns]
+
+
+def allocation_status_frame(plan, strategies):
+    """Classify current weight versus the execution target using each strategy's tolerance."""
+    result = plan.copy()
+    if result.empty:
+        for column in ['괴리(%p)', '허용괴리(%p)', '목표상태']:
+            result[column] = pd.Series(dtype=float if column != '목표상태' else str)
+        return result
+    tolerance = (strategies[['code', 'tolerance_pct']].copy()
+                 .assign(tolerance_pct=lambda frame: pd.to_numeric(frame['tolerance_pct'], errors='coerce').fillna(0.0))
+                 .drop_duplicates('code').set_index('code')['tolerance_pct'].to_dict())
+    result['현재비중(%)'] = pd.to_numeric(result['현재비중(%)'], errors='coerce').fillna(0.0)
+    result['실행목표(%)'] = pd.to_numeric(result['실행목표(%)'], errors='coerce').fillna(0.0)
+    result['괴리(%p)'] = result['현재비중(%)'] - result['실행목표(%)']
+    result['허용괴리(%p)'] = result['전략'].astype(str).map(tolerance).fillna(0.0)
+
+    def classify(row):
+        if row['괴리(%p)'] < -row['허용괴리(%p)'] - 1e-9:
+            return '미달'
+        if row['괴리(%p)'] > row['허용괴리(%p)'] + 1e-9:
+            return '초과'
+        return '충족'
+
+    result['목표상태'] = result.apply(classify, axis=1)
+    priority = {'미달': 0, '초과': 1, '충족': 2}
+    result['_status_order'] = result['목표상태'].map(priority).fillna(3)
+    result['_gap_order'] = result['괴리(%p)'].abs()
+    return result.sort_values(['_status_order', '_gap_order'], ascending=[True, False]).drop(
+        columns=['_status_order', '_gap_order']).reset_index(drop=True)
+
+
+def style_allocation_rows(frame):
+    """Apply calm, accessible status colors to allocation rows."""
+    def row_style(row):
+        background, _ = TARGET_STATUS_STYLES.get(row.get('목표상태'), ('#ffffff', '#2e312f'))
+        return [f'background-color: {background}' for _ in row.index]
+
+    def status_style(value):
+        background, foreground = TARGET_STATUS_STYLES.get(value, ('#ffffff', '#2e312f'))
+        return f'background-color: {background}; color: {foreground}; font-weight: 750'
+
+    styled = frame.style.apply(row_style, axis=1)
+    if '목표상태' in frame.columns:
+        styled = styled.map(status_style, subset=['목표상태'])
+    return styled
 
