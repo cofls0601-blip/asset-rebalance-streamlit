@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo
 import json
 import hashlib
 import hmac
+import math
+from html import escape
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -86,20 +88,47 @@ p,li{font-size:1rem;line-height:1.6}
 .target-chip.under{background:#e7f1fb;color:#245f8f;border-color:#c8dff2}
 .target-chip.met{background:#e8f3ec;color:#32694c;border-color:#cce1d3}
 .target-chip.over{background:#f8e8e5;color:#91483d;border-color:#edcbc5}
+.st-key-mobile_toolbar,.st-key-mobile_monthly_allocation_status,.st-key-mobile_order_allocation_status,.st-key-mobile_holdings_editor{display:none}
+.asset-card-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:.75rem;margin:.45rem 0 1.25rem}
+.asset-card{border:1px solid var(--warm-border);border-left:4px solid var(--sage);border-radius:13px;background:var(--warm-surface);padding:1rem;min-width:0}
+.asset-card.status-under{border-left-color:#4c87b5;background:#f5f9fe}
+.asset-card.status-over{border-left-color:#b96659;background:#fdf7f5}
+.asset-card.status-met{border-left-color:#67a17a;background:#f7fbf8}
+.asset-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.55rem}
+.asset-card-name{font-weight:750;font-size:1rem;line-height:1.45;overflow-wrap:anywhere}
+.asset-card-meta{color:var(--warm-muted);font-size:.83rem;margin:.25rem 0 .85rem;overflow-wrap:anywhere}
+.asset-card-weights{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:.7rem;margin:.45rem 0 .7rem}
+.asset-card-weights span{display:block;color:var(--warm-muted);font-size:.78rem}
+.asset-card-weights strong{font-size:1.12rem;font-variant-numeric:tabular-nums}
+.asset-card-arrow{font-size:1.15rem;color:var(--warm-muted)}
+.asset-card-order{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline;border-top:1px solid var(--warm-border);padding-top:.7rem;font-size:.88rem}
+.asset-card-order strong{overflow-wrap:anywhere;text-align:right}
+.asset-card-gap{font-weight:750;font-size:.85rem;margin-top:.25rem}
+.status-under .asset-card-gap{color:#245f8f}
+.status-over .asset-card-gap{color:#91483d}
+.status-met .asset-card-gap{color:#32694c}
 @media(max-width:800px){
-  .block-container{padding:1.25rem 1rem 4.5rem}
+  .block-container{padding:1.1rem 1rem calc(4.5rem + env(safe-area-inset-bottom))}
   h1{font-size:2rem!important}
   h2{font-size:1.35rem!important}
   [data-testid="stMetric"]{padding:.85rem .9rem}
   [data-testid="stMetricValue"]{font-size:1.42rem!important}
   [data-baseweb="tab-list"]{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
-  .workflow{display:flex;overflow-x:auto;gap:.55rem;margin-right:-1rem;padding-right:1rem;padding-bottom:.35rem;scroll-snap-type:x mandatory;scrollbar-width:none}
-  .workflow::-webkit-scrollbar,[data-baseweb="tab-list"]::-webkit-scrollbar{display:none}
-  .workflow-step{flex:0 0 8.5rem;min-height:70px;align-items:flex-start;flex-direction:column;gap:.35rem;scroll-snap-align:start}
+  [data-baseweb="tab-list"]::-webkit-scrollbar{display:none}
+  [data-testid="stMain"] [data-testid="stHorizontalBlock"]{flex-wrap:wrap;gap:.7rem}
+  [data-testid="stMain"] :is([data-testid="column"],[data-testid="stColumn"]){min-width:0!important;width:100%!important;flex:1 1 100%!important}
+  [data-testid="stMain"] .st-key-monthly_metrics :is([data-testid="column"],[data-testid="stColumn"]){width:calc(50% - .35rem)!important;flex:1 1 calc(50% - .35rem)!important}
+  .st-key-mobile_toolbar{display:block;background:var(--warm-surface);border:1px solid var(--warm-border);border-radius:14px;padding:.85rem;margin-bottom:1.1rem}
+  .st-key-mobile_monthly_allocation_status,.st-key-mobile_order_allocation_status,.st-key-mobile_holdings_editor{display:block}
+  .st-key-desktop_monthly_allocation_status,.st-key-desktop_order_allocation_status,.st-key-desktop_holdings_editor{display:none}
+  .workflow{grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem;margin-bottom:1.1rem}
+  .workflow-step{min-height:46px;padding:.3rem .35rem;gap:.4rem}
+  .workflow-label{font-size:.82rem}
+  .asset-card-list{grid-template-columns:1fr}
 }
 @media(max-width:460px){
   .page-description{font-size:.94rem;margin-bottom:1.15rem}
-  [data-testid="stHorizontalBlock"]{gap:.7rem}
+  .asset-card-weights{gap:.4rem}
   .stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{width:100%}
 }
 </style>''',unsafe_allow_html=True)
@@ -112,6 +141,7 @@ PAGE_DESCRIPTIONS={
     '기록':'평가와 체결 내역을 확정하고 기간별 성과를 확인합니다.',
     '설정':'Google Sheets 연결, 백업·복원과 수동 가격을 관리합니다.',
 }
+PAGES=list(PAGE_DESCRIPTIONS)
 
 
 def workflow_steps(labels, active=1, completed=0):
@@ -125,6 +155,15 @@ def workflow_steps(labels, active=1, completed=0):
 
 def navigate(page):
     st.session_state.workspace_page=page
+    st.session_state.mobile_workspace_page=page
+
+
+def sync_page(source, target):
+    st.session_state[target]=st.session_state[source]
+
+
+def sync_date(source, target):
+    st.session_state[target]=st.session_state[source]
 
 
 def target_legend(frame):
@@ -139,8 +178,54 @@ def target_legend(frame):
 
 def show_allocation_status(frame, columns, key):
     visible=frame[columns].copy()
-    st.dataframe(style_allocation_rows(visible),hide_index=True,use_container_width=True,key=key,
-        column_config=numeric_column_config(visible.columns))
+    with st.container(key='desktop_'+key):
+        st.dataframe(style_allocation_rows(visible),hide_index=True,use_container_width=True,key=key,
+            column_config=numeric_column_config(visible.columns))
+    with st.container(key='mobile_'+key):
+        st.markdown(mobile_allocation_cards(frame),unsafe_allow_html=True)
+
+
+def mobile_allocation_cards(frame):
+    """Show the decision and proposed order without horizontal table scrolling."""
+    if frame.empty:
+        return ''
+    quantities=pd.to_numeric(frame['제안수량'],errors='coerce').fillna(0)
+    ordered=frame.assign(_needs_order=quantities.ne(0)).sort_values('_needs_order',ascending=False)
+    cards=[]
+    for _,row in ordered.iterrows():
+        status=str(row['목표상태'])
+        status_class={'미달':'under','초과':'over','충족':'met'}.get(status,'met')
+        name=escape(str(row['종목']))
+        strategy=escape(str(row['전략']))
+        ticker=escape(str(row['티커']))
+        action=escape(str(row['구분']))
+        quantity=float(row['제안수량'])
+        shares=f'{abs(quantity):,.4f}'.rstrip('0').rstrip('.')
+        amount=float(row['예상매매액']) if '예상매매액' in row and pd.notna(row['예상매매액']) else 0.
+        order=(f'{action} {shares}주' if quantity else '이번 주문 없음')
+        money=f'{abs(amount):,.0f}원' if quantity else ''
+        cards.append(
+            f'<article class="asset-card status-{status_class}" aria-label="{strategy} {name} {escape(status)}">'
+            f'<div class="asset-card-head"><span class="asset-card-name">{name}</span>'
+            f'<span class="target-chip {status_class}">{escape(status)}</span></div>'
+            f'<div class="asset-card-meta">{strategy} · {ticker}</div>'
+            f'<div class="asset-card-weights"><div><span>현재 비중</span><strong>{float(row["현재비중(%)"]):.2f}%</strong></div>'
+            f'<span class="asset-card-arrow" aria-hidden="true">→</span>'
+            f'<div><span>실행 목표</span><strong>{float(row["실행목표(%)"]):.2f}%</strong></div></div>'
+            f'<div class="asset-card-gap">목표와 차이 {float(row["괴리(%p)"]):+.2f}%p</div>'
+            f'<div class="asset-card-order"><span>{order}</span><strong>{money}</strong></div></article>'
+        )
+    return '<div class="asset-card-list">'+''.join(cards)+'</div>'
+
+
+def parse_mobile_quantity(raw, label):
+    try:
+        quantity=float(raw.replace(',','').strip())
+    except ValueError as exc:
+        raise DataError(f'{label}: 수량 또는 현금에 숫자를 입력하세요.') from exc
+    if not math.isfinite(quantity) or quantity<0:
+        raise DataError(f'{label}: 0 이상의 유한한 숫자를 입력하세요.')
+    return quantity
 
 @st.cache_data(ttl=900,show_spinner=False)
 def prices(ticker,market,day,adjusted=False):
@@ -186,6 +271,8 @@ if remote_enabled:
 def install(data, invalidate=True):
     for k,v in data.items():
         st.session_state[k]=v
+    if 'holdings' in data:
+        st.session_state.holdings_revision=st.session_state.get('holdings_revision',0)+1
     if invalidate:
         st.session_state.pop('run',None)
         st.session_state.pop('fills',None)
@@ -249,14 +336,32 @@ if remote_enabled and not st.session_state.get('remote_loaded'):
         st.button('원장 다시 읽기')
         st.stop()
 
+def save_remote_workspace():
+    try:
+        with st.spinner('원장을 저장하고 다시 확인합니다…'):
+            st.session_state.remote_token=save_workspace(
+                remote['SHEETS_WEBAPP_URL'],remote['SHEETS_SECRET'],workspace(),st.session_state.remote_token)
+        st.session_state.dirty=False
+        st.session_state.sync_message='Sheets 저장·재조회 확인 완료'
+    except DataError as e:
+        st.error(str(e))
+
+
+today=datetime.now(ZoneInfo('Asia/Seoul')).date()
+st.session_state.setdefault('workspace_page',PAGES[0])
+st.session_state.setdefault('mobile_workspace_page',st.session_state.workspace_page)
+st.session_state.setdefault('sidebar_as_of',today)
+st.session_state.setdefault('mobile_as_of',st.session_state.sidebar_as_of)
+
 with st.sidebar:
     st.markdown('### ◈ REBALANCE')
     st.caption('개인 자산배분 운영')
-    page=st.radio('작업 공간',['이번 달','자산 현황','주문안','전략실','기록','설정'],
-        key='workspace_page',label_visibility='collapsed')
+    page=st.radio('작업 공간',PAGES,key='workspace_page',label_visibility='collapsed',
+        on_change=sync_page,args=('workspace_page','mobile_workspace_page'))
     st.divider()
-    today=datetime.now(ZoneInfo('Asia/Seoul')).date()
-    as_of=st.date_input('평가 기준일',today,max_value=today,help='월말에 한정하지 않습니다. 분기 규칙은 선택한 달이 3·6·9·12월인지 확인합니다.')
+    as_of=st.date_input('평가 기준일',max_value=today,key='sidebar_as_of',
+        on_change=sync_date,args=('sidebar_as_of','mobile_as_of'),
+        help='월말에 한정하지 않습니다. 분기 규칙은 선택한 달이 3·6·9·12월인지 확인합니다.')
     st.caption('CASH = 원화 잔액 · 가격 1\n\n매도대금 재사용·거래 비용 계산 없음')
     if st.session_state.demo:
         st.warning('DEMO · 예시 보유내역')
@@ -264,16 +369,29 @@ with st.sidebar:
         st.caption('저장할 변경사항 있음')
     if remote_enabled:
         if st.button('Sheets에 저장',type='primary',disabled=st.session_state.demo,use_container_width=True):
-            try:
-                with st.spinner('원장을 저장하고 다시 확인합니다…'):
-                    st.session_state.remote_token=save_workspace(remote['SHEETS_WEBAPP_URL'],remote['SHEETS_SECRET'],workspace(),st.session_state.remote_token)
-                st.session_state.dirty=False
-                st.session_state.sync_message='Sheets 저장·재조회 확인 완료'
-            except DataError as e:st.error(str(e))
+            save_remote_workspace()
         if st.session_state.get('sync_message') and not st.session_state.get('dirty'):
             st.success(st.session_state.sync_message)
     else:st.caption('Sheets 수동 기록 모드')
     st.download_button('전체 작업 백업',backup_bytes(workspace(),working_draft()),'rebalance-backup.json','application/json',use_container_width=True)
+
+with st.container(key='mobile_toolbar'):
+    st.selectbox('메뉴',PAGES,key='mobile_workspace_page',
+        on_change=sync_page,args=('mobile_workspace_page','workspace_page'))
+    st.date_input('평가 기준일',max_value=today,key='mobile_as_of',
+        on_change=sync_date,args=('mobile_as_of','sidebar_as_of'))
+    if st.session_state.demo:
+        st.caption('DEMO · 예시 보유내역')
+    if st.session_state.get('dirty'):
+        st.caption('저장할 변경사항 있음')
+    if remote_enabled:
+        if st.button('Sheets 저장',key='mobile_save',type='primary',
+                     disabled=st.session_state.demo,use_container_width=True):
+            save_remote_workspace()
+        if st.session_state.get('sync_message') and not st.session_state.get('dirty'):
+            st.success(st.session_state.sync_message)
+    st.download_button('전체 작업 백업',backup_bytes(workspace(),working_draft()),
+        'rebalance-backup.json','application/json',key='mobile_backup',use_container_width=True)
 
 st.markdown('<div class="eyebrow">ALLOCATION WORKSPACE</div>',unsafe_allow_html=True)
 st.title(page)
@@ -290,17 +408,57 @@ if page=='이번 달':
     else:
         workflow_steps(['보유내역 확인','종가 확정','규칙 판정','주문안 검토','기록'],active=2,completed=1)
     with st.expander('1 · 보유수량과 현금 확인',expanded='run' not in st.session_state):
-        with st.form('holdings_form'):
-            edited=edit_frame(st.session_state.holdings,num_rows='dynamic',hide_index=True,use_container_width=True,
-                column_config={'shares':st.column_config.NumberColumn('보유수량 / CASH 원화 잔액',min_value=0.,format='%,.0f'),
-                               'ticker':st.column_config.TextColumn('티커'),'target_pct':st.column_config.NumberColumn('기본 목표 (%)',min_value=0.,max_value=100.)})
-            if st.form_submit_button('보유내역 확인·적용'):
-                try:
-                    install({'holdings':normalize_holdings(edited)})
-                    st.session_state.demo=False
-                    st.success('입력 검증 완료. 지정일 종가를 조회하세요.')
-                except DataError as e:
-                    st.error(str(e))
+        with st.container(key='desktop_holdings_editor'):
+            with st.form('holdings_form'):
+                edited=edit_frame(st.session_state.holdings,num_rows='dynamic',hide_index=True,use_container_width=True,
+                    key=f'holdings_editor_{st.session_state.get("holdings_revision",0)}',
+                    column_config={'shares':st.column_config.NumberColumn('보유수량 / CASH 원화 잔액',min_value=0.,format='%,.0f'),
+                                   'ticker':st.column_config.TextColumn('티커'),'target_pct':st.column_config.NumberColumn('기본 목표 (%)',min_value=0.,max_value=100.)})
+                if st.form_submit_button('보유내역 확인·적용'):
+                    try:
+                        install({'holdings':normalize_holdings(edited)})
+                        st.session_state.demo=False
+                        st.success('입력 검증 완료. 지정일 종가를 조회하세요.')
+                    except DataError as e:
+                        st.error(str(e))
+        with st.container(key='mobile_holdings_editor'):
+            holdings=st.session_state.holdings
+            accounts=list(holdings[['strategy','account']].drop_duplicates().itertuples(index=False,name=None))
+            if accounts:
+                selected=st.selectbox('수량을 확인할 계좌',accounts,
+                    format_func=lambda pair:f'{pair[0]} · {pair[1]}',key='mobile_holdings_account')
+                subset=holdings[holdings.strategy.eq(selected[0]) & holdings.account.eq(selected[1])]
+                with st.form('mobile_holdings_form'):
+                    entries={}
+                    revision=st.session_state.get('holdings_revision',0)
+                    for idx,row in subset.iterrows():
+                        cash=str(row.ticker)=='CASH'
+                        display=(f'{float(row.shares):,.0f}' if cash else
+                            f'{float(row.shares):,.8f}'.rstrip('0').rstrip('.'))
+                        label=f'{row["name"]} · {row.ticker} ({"원" if cash else "주"})'
+                        entries[idx]=(label,st.text_input(label,value=display,key=f'mobile_qty_{revision}_{idx}'))
+                    if st.form_submit_button('선택 계좌 보유내역 적용',use_container_width=True):
+                        try:
+                            updated=holdings.copy()
+                            for idx,(label,raw) in entries.items():
+                                updated.at[idx,'shares']=parse_mobile_quantity(raw,label)
+                            install({'holdings':normalize_holdings(updated)})
+                            st.session_state.demo=False
+                            st.success('입력 검증 완료. 지정일 종가를 조회하세요.')
+                        except DataError as e:
+                            st.error(str(e))
+            if st.checkbox('종목 추가·전체 표 편집',key='mobile_full_holdings'):
+                st.caption('표를 좌우로 밀어 티커·수량·목표 비중을 편집하세요.')
+                with st.form('mobile_holdings_table_form'):
+                    mobile_table=edit_frame(holdings,num_rows='dynamic',hide_index=True,use_container_width=True,
+                        key=f'mobile_holdings_table_{st.session_state.get("holdings_revision",0)}')
+                    if st.form_submit_button('전체 보유내역 적용',use_container_width=True):
+                        try:
+                            install({'holdings':normalize_holdings(mobile_table)})
+                            st.session_state.demo=False
+                            st.success('전체 보유내역을 적용했습니다.')
+                        except DataError as e:
+                            st.error(str(e))
     manual_candidates=[]
     for _,strategy_row in st.session_state.strategies.iterrows():
         try:
@@ -327,11 +485,12 @@ if page=='이번 달':
         for code,message in run['errors'].items():
             st.error(f'{code} · 확정 차단: {message}')
         if not view.empty:
-            a,b,c,d=st.columns(4)
-            a.metric('평가 가능 자산' if run['errors'] else '총자산',format_won(view['평가액'].sum()))
-            b.metric('실제 CASH',format_won(view.loc[view.ticker.eq('CASH'),'평가액'].sum()))
-            c.metric('주문 대상',f"{int(plan['제안수량'].ne(0).sum())}종목")
-            d.metric('확인 필요',f"{len(run['errors'])}계좌")
+            with st.container(key='monthly_metrics'):
+                a,b,c,d=st.columns(4)
+                a.metric('평가 가능 자산' if run['errors'] else '총자산',format_won(view['평가액'].sum()))
+                b.metric('실제 CASH',format_won(view.loc[view.ticker.eq('CASH'),'평가액'].sum()))
+                c.metric('주문 대상',f"{int(plan['제안수량'].ne(0).sum())}종목")
+                d.metric('확인 필요',f"{len(run['errors'])}계좌")
             st.caption(f"요청일 {run['date']} · 실제 가격일 {', '.join(sorted(view.price_date.astype(str).unique()))}")
             st.subheader('3 · 계좌별 판정')
             for decision in run['decisions']:
@@ -684,11 +843,15 @@ elif page=='설정':
             code=st.selectbox('전략',st.session_state.strategies.code.tolist())
             ticker=st.text_input('수동 입력 티커').upper().strip()
             observed=st.date_input('실제 가격일',as_of,max_value=as_of)
-            close=st.number_input('실제 종가',min_value=0.,value=0.,format='%,.0f')
+            close_text=st.text_input('실제 종가',value='0',help='예: 12,345')
             source=st.text_input('가격 출처')
             reason=st.text_input('수동 입력 사유')
             if st.form_submit_button('수동 가격 등록'):
-                if ticker and ticker!='CASH' and close>0 and source and reason:
+                try:
+                    close=float(close_text.replace(',','').strip())
+                except ValueError:
+                    close=0.
+                if ticker and ticker!='CASH' and math.isfinite(close) and close>0 and source and reason:
                     st.session_state.overrides[f'{code}:{ticker}']={'date':str(observed),'close':close,'source':source,'reason':reason}
                     st.session_state.pop('run',None);st.success('등록했습니다. 종가 조회를 다시 실행하세요.')
                 else:st.error('CASH 외 종목, 양수 가격, 출처와 사유가 필요합니다.')
