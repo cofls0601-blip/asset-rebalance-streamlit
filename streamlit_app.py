@@ -17,8 +17,20 @@ from streamlit_app.ledger import (TABLES, empty_workspace, backup_bytes, restore
     validate_actions, snapshots_match, load_frozen_run, order_status, cancel_orders)
 from streamlit_app.performance import summarize, validate_flows, monthly_risk, benchmark_index
 from streamlit_app.sheets_sync import load_workspace, save_workspace
-from streamlit_app.ui import (numeric_column_config, allocation_status_frame,
-    style_allocation_rows)
+import importlib
+
+import streamlit_app.ui as ui_helpers
+
+# Streamlit Cloud can rerun this entrypoint while retaining an older imported
+# helper module during a multi-file deployment. Reload once when the newly
+# deployed allocation helpers are not present so the app does not fail during
+# that short-lived mixed-version state.
+if not hasattr(ui_helpers, 'allocation_status_frame'):
+    ui_helpers = importlib.reload(ui_helpers)
+
+numeric_column_config = ui_helpers.numeric_column_config
+allocation_status_frame = ui_helpers.allocation_status_frame
+style_allocation_rows = ui_helpers.style_allocation_rows
 
 st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layout='wide')
 st.markdown('''<style>
@@ -687,4 +699,3 @@ elif page=='설정':
 
 st.divider()
 st.caption('수동 주문 전용 · Google Sheets 원장 · 선택한 기준일의 실제 종가 · 연간 연구는 후속 개발')
-
