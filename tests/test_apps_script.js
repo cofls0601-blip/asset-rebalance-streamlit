@@ -47,6 +47,8 @@ const context=vm.createContext({
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../apps_script/Code.gs'),'utf8'),context);
 function call(body) { return JSON.parse(context.doPost({postData:{contents:JSON.stringify({secret,...body})}})); }
 const original=call({action:'load'});assert.equal(original.ok,true);
+assert.equal(context.diagnoseRecovery().state,'clean');
+assert.equal(context.diagnoseRecovery().recovery,'missing_or_empty');
 const workspace=original.workspace;
 workspace.columns.holdings=['ticker','name','shares'];
 workspace.tables.holdings=[{ticker:'069500',name:'TIGER 200(합성)',shares:10}];
@@ -71,5 +73,15 @@ const before=call({action:'load'});
 context.writeRecovery(spreadsheet,{workspace:before.workspace,state:{}});
 context.writeState(spreadsheet,{pending:'incomplete'});
 tabs.get('Holdings').data[1][2]=999;
+const pendingReport=context.diagnoseRecovery();
+assert.equal(pendingReport.state,'pending');
+assert.equal(pendingReport.recovery,'valid');
+assert.equal(pendingReport.current_matches_backup,false);
+assert.equal(tabs.get('Holdings').data[1][2],999); // Diagnosis must not change the source.
 assert.equal(call({action:'load'}).workspace.tables.holdings[0].shares,25);
+tabs.get('_RebalanceRecovery').data=[['not-json']];
+context.writeState(spreadsheet,{pending:'incomplete'});
+const corruptReport=context.diagnoseRecovery();
+assert.equal(corruptReport.recovery,'invalid_json');
+assert.equal(call({action:'load'}).error,'recovery_required');
 console.log('Apps Script contract: auth, save, replay, conflict, rollback, recovery passed');
