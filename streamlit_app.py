@@ -65,6 +65,7 @@ p,li{font-size:1rem;line-height:1.6}
 [data-testid="stSidebar"] p,[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3,[data-testid="stSidebar"] label{color:#f9f5ef!important}
 [data-testid="stSidebar"] [role="radiogroup"] label{min-height:42px;padding:.3rem .45rem;border-radius:8px}
 [data-testid="stSidebar"] [role="radiogroup"] p{font-size:.96rem!important;font-weight:600!important}
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] p{color:var(--warm-ink)!important}
 .stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{min-height:44px;border-radius:10px;border-color:color-mix(in srgb,var(--terracotta) 55%,var(--warm-border));font-size:.96rem!important;font-weight:650!important;padding:.55rem 1rem!important}
 [data-baseweb="input"] input,[data-baseweb="select"] *{font-size:.96rem!important}
 [data-baseweb="tab-list"] button{min-height:44px;padding:.65rem .9rem!important}
