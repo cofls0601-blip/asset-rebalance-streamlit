@@ -143,6 +143,46 @@ function recoverPending(ss) {
     SpreadsheetApp.flush();
   } catch (_) { throw new Error('recovery_required'); }
 }
+
+// Run this from the Apps Script editor when recovery_required appears.
+// Read-only: the log contains no cell contents, request IDs, or credentials.
+function diagnoseRecovery() {
+  const report = {state: 'unknown', recovery: 'unknown', current: 'unknown'};
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const ss = SpreadsheetApp.openById(props.getProperty('SPREADSHEET_ID'));
+    const stateTab = ss.getSheetByName(STATE);
+    const stateRaw = stateTab ? stateTab.getRange(1, 1).getValue() : '';
+    try {
+      const state = stateRaw ? JSON.parse(stateRaw) : {};
+      report.state = state.pending ? 'pending' : 'clean';
+    } catch (_) { report.state = 'invalid_json'; }
+
+    const tab = ss.getSheetByName(RECOVERY);
+    if (!tab || !tab.getLastRow()) {
+      report.recovery = 'missing_or_empty';
+    } else {
+      report.recovery_chunks = tab.getLastRow();
+      try {
+        const raw = tab.getRange(1, 1, tab.getLastRow(), 1).getValues().map(row => row[0]).join('');
+        const backup = JSON.parse(raw);
+        report.recovery = 'parsed';
+        validateWorkspace(backup.workspace);
+        report.recovery = 'valid';
+        report.backup_rows = Object.keys(TABLE_NAMES).map(key => [key, backup.workspace.tables[key].length]);
+        try {
+          report.current_matches_backup = digest(readWorkspace(ss)) === digest(backup.workspace);
+          report.current = 'readable';
+        } catch (_) { report.current = 'unreadable'; }
+      } catch (_) {
+        if (report.recovery !== 'parsed') report.recovery = 'invalid_json';
+        else report.recovery = 'invalid_workspace';
+      }
+    }
+  } catch (_) { report.configuration = 'unavailable'; }
+  console.log(JSON.stringify(report));
+  return report;
+}
 function canonical(workspace) {
   // Object key order, blank/null cells, and integer/float encoding must not alter identity.
   return Object.keys(TABLE_NAMES).map(key => [key, workspace.columns[key], workspace.tables[key].map(row => workspace.columns[key].map(col => row[col] == null ? '' : row[col]))]);
