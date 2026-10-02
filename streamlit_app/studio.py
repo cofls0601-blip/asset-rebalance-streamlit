@@ -91,7 +91,7 @@ def rule_preview_html(spec, names):
         f'<div><span class="branch fail">미충족하면</span> {action_sentence(spec.get("onFail",{}),names)}</div></div>')
 
 
-def render(strategies, holdings, priced_view, as_of, fetch):
+def render(strategies, holdings, priced_view, as_of, fetch, go_to_monthly=None):
     st.subheader('규칙 빌더')
     st.caption('실행 일정과 조건, 충족·미충족 시 행동을 선택하고 실제 종가로 검증합니다.')
     codes = strategies['code'].astype(str).tolist()
@@ -100,7 +100,9 @@ def render(strategies, holdings, priced_view, as_of, fetch):
         return
     with st.container(key='builder_toolbar'):
         st.markdown('<div class="builder-section">전략 선택</div>',unsafe_allow_html=True)
-        code = st.selectbox('편집할 전략', codes, key='studio_code')
+        accounts=holdings.groupby('strategy',sort=False)['account'].first().to_dict()
+        code = st.selectbox('편집할 전략', codes, key='studio_code',
+            format_func=lambda value:f'{value} · {accounts.get(value,"계좌 미지정")}')
     row = strategies.loc[strategies['code'].astype(str).eq(code)].iloc[0]
     assets = holdings[holdings['strategy'].astype(str).eq(code)]
     sub = priced_view[priced_view['strategy'].astype(str).eq(code)] if priced_view is not None else None
@@ -116,7 +118,7 @@ def render(strategies, holdings, priced_view, as_of, fetch):
         st.session_state[spec_key] = copy.deepcopy(params if params.get('schema_version') == 2 else new_spec())
     spec = st.session_state[spec_key]
     key=f'{spec_key}_v{st.session_state.get(spec_key+"_revision",0)}'
-    st.caption(f'{row.get("account", "")} · 버전 {row.get("version", "1")} · 조건 {len(spec["conditions"])}개')
+    st.caption(f'편집 중인 초안 · 버전 {row.get("version", "1")} · 조건 {len(spec["conditions"])}개 · 적용 전까지 현재 전략은 유지됩니다.')
     if row['rule'] != 'visual' or params.get('schema_version') != 2:
         st.info('현재 기존 규칙은 보존되어 있습니다. 아래 초안을 적용할 때만 새 조건 규칙으로 전환됩니다.')
     preview_slot=st.empty()
@@ -127,12 +129,14 @@ def render(strategies, holdings, priced_view, as_of, fetch):
         spec['scope']['run'] = select('판정 주기', list(FREQUENCIES), spec['scope'].get('run'), key+'_run', FREQUENCIES)
         if spec['scope']['run'] == 'months':
             spec['scope']['months'] = st.multiselect('실행 월', list(range(1,13)), default=spec['scope'].get('months',[3,6,9,12]), key=key+'_months')
-        spec['signal_adjusted'] = st.checkbox('신호에 수정종가 사용', bool(spec.get('signal_adjusted',False)), key=key+'_adjusted')
-        spec['completed_months_only'] = st.checkbox('이전 확정 월봉만 사용', bool(spec.get('completed_months_only',False)), key=key+'_completed')
-        spec['scope']['market'] = select('신호 시장 분류', ['MIX','KR','US'], spec['scope'].get('market'), key+'_market')
-        st.caption('시장 분류는 표시용이며 주문 대상을 제한하지 않습니다. 미국 신호로 한국 ETF를 매매할 수 있습니다. 지정일이 속한 월로 일정을 판정합니다. 매도대금은 이번 주문안의 매수 재원에 포함하지 않습니다.')
-        mode = st.radio('조건 편집 방식', ['카드','표'], horizontal=True, key=key+'_mode')
-        st.caption('조건 연결은 위에서 아래로 왼쪽부터 계산합니다: (A AND B) OR C. 데이터가 하나라도 없으면 매매를 차단합니다.')
+        with st.expander('고급 설정 · 시계열과 표 편집'):
+            spec['signal_adjusted'] = st.checkbox('신호에 수정종가 사용', bool(spec.get('signal_adjusted',False)), key=key+'_adjusted')
+            spec['completed_months_only'] = st.checkbox('이전 확정 월봉만 사용', bool(spec.get('completed_months_only',False)), key=key+'_completed')
+            spec['scope']['market'] = select('신호 시장 분류', ['MIX','KR','US'], spec['scope'].get('market'), key+'_market')
+            st.caption('시장 분류는 표시용이며 주문 대상을 제한하지 않습니다. 미국 신호로 한국 ETF를 매매할 수 있습니다. 지정일이 속한 월로 일정을 판정합니다.')
+            mode = st.radio('조건 편집 방식', ['카드','표'], horizontal=True, key=key+'_mode')
+        if len(spec['conditions'])>1:
+            st.caption('위에서 아래로 연결합니다: (A AND B) OR C. AND는 모두 충족, OR는 하나 이상 충족입니다.')
         if mode == '표':
             columns = ['connector','op','ticker','months','days','lookback','pct','price','tickerB','tickers','rank','frequency','value','threshold','source','observed_date','published_date','months_list']
             frame = pd.DataFrame(spec['conditions']).reindex(columns=columns)
@@ -148,12 +152,14 @@ def render(strategies, holdings, priced_view, as_of, fetch):
                 st.info('조건이 없습니다. 아래 ‘조건 추가’로 시작하세요.')
             for i, condition in enumerate(spec['conditions']):
                 ck = f'{key}_c{i}'
-                with st.container(border=True,key=f'builder_condition_{i}'):
-                    st.markdown(f'<div class="builder-section">IF · 조건 {i+1:02d}</div>',unsafe_allow_html=True)
-                    if i:
+                if i:
+                    with st.container(key=f'builder_connector_{i}'):
                         condition['connector'] = st.radio('앞 조건과 연결', ['AND','OR'],
                             index=0 if condition.get('connector','AND')=='AND' else 1,
-                            horizontal=True,key=ck+'_connect')
+                            horizontal=True,key=ck+'_connect',
+                            format_func=lambda value:'AND · 모두 충족' if value=='AND' else 'OR · 하나 이상 충족')
+                with st.container(border=True,key=f'builder_condition_{i}'):
+                    st.markdown(f'<div class="builder-section">IF · 조건 {i+1:02d}</div>',unsafe_allow_html=True)
                     previous_op=condition.get('op')
                     condition['op'] = select('조건 종류', list(OPERATORS), previous_op, ck+'_op', OPERATORS)
                     op = condition['op']
@@ -270,6 +276,8 @@ def render(strategies, holdings, priced_view, as_of, fetch):
     result = evaluate(spec, sub, as_of, fetch) if sub is not None and not sub.empty else None
     if result is None:
         st.info('이번 달에서 선택한 기준일의 종가를 조회하면 판정 근거와 목표 금액을 확인하고 규칙을 적용할 수 있습니다.')
+        if go_to_monthly:
+            st.button('이번 달에서 종가 확인',on_click=go_to_monthly,use_container_width=True)
     else:
         st.write(f"**{result['status']}** · {result['message']} · 다음 기준일: {result.get('next_run','—')}")
         if result['evidence']:
@@ -282,8 +290,9 @@ def render(strategies, holdings, priced_view, as_of, fetch):
                                 for t,v in zip(sub['ticker'],sub['평가액'])])
         preview = prefer_asset_names(preview, holdings)
         st.dataframe(preview, column_config=numeric_column_config(preview.columns), hide_index=True, use_container_width=True)
-    version = st.text_input('적용할 버전', str(row.get('version','1.0')), key=key+'_version')
-    note = st.text_input('변경 이유', key=key+'_note')
+    with st.expander('버전과 변경 기록'):
+        version = st.text_input('적용할 버전', str(row.get('version','1.0')), key=key+'_version')
+        note = st.text_input('변경 이유', key=key+'_note')
     if st.button('검토한 규칙 적용', type='primary', key=key+'_save',
                  disabled=not spec['conditions'] or result is None or result['status']=='계산 차단'):
         updated = st.session_state.strategies.copy()
@@ -300,5 +309,5 @@ def render(strategies, holdings, priced_view, as_of, fetch):
         st.session_state.pop('priced_holdings',None)
         st.session_state.pop('run',None)
         st.session_state.dirty = True
-        st.success('전략 규칙을 세션에 적용했습니다. Sheets에 저장하거나 전체 백업을 내려받으세요.')
+        st.session_state.studio_notice='전략 규칙을 적용했습니다. 이번 달에서 종가를 다시 조회하면 변경된 규칙의 주문안이 생성됩니다.'
         st.rerun()
