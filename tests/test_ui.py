@@ -21,7 +21,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertFalse(self.app.exception)
 
     def test_css_preserves_streamlit_material_icons(self):
-        source=(Path(__file__).resolve().parents[1]/'streamlit_app.py').read_text(encoding='utf-8')
+        source=(Path(__file__).resolve().parents[1]/'streamlit_app'/'theme.css').read_text(encoding='utf-8')
         self.assertNotIn('[class*="st-"]{font-family',source)
         self.assertIn('[data-testid="stIconMaterial"]',source)
         self.assertIn('Material Symbols Rounded',source)
@@ -38,6 +38,13 @@ class WorkspaceTests(unittest.TestCase):
     def test_all_workspaces_with_real_calculations(self):
         self.with_run()
         for page in ['이번 달','자산 현황','주문안','전략실','기록','설정']:self.navigate(page)
+
+    def test_mobile_decision_summary_and_manual_order_list(self):
+        self.with_run();self.navigate('이번 달')
+        self.assertTrue(any('monthly-summary' in block.value for block in self.app.markdown))
+        self.assertTrue(any('decision-top' in block.value for block in self.app.markdown))
+        self.navigate('주문안')
+        self.assertTrue(any('order-list' in block.value for block in self.app.markdown))
 
     def test_evaluation_button_and_record_freeze(self):
         self.app.session_state['holdings']=holdings();self.app.session_state['strategies']=strategies()
