@@ -39,6 +39,7 @@ style_allocation_rows = ui_helpers.style_allocation_rows
 pio.templates.default='plotly_white'
 st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layout='wide')
 st.markdown('<style>'+Path(__file__).with_name('streamlit_app').joinpath('theme.css').read_text(encoding='utf-8')+'</style>',unsafe_allow_html=True)
+st.markdown('<meta name="color-scheme" content="light only">',unsafe_allow_html=True)
 
 PAGE_DESCRIPTIONS={
     '이번 달':'보유내역과 실제 종가를 확인하고 이번 평가의 주문안을 준비합니다.',
@@ -497,7 +498,7 @@ if page=='이번 달':
             with st.form('holdings_form'):
                 edited=edit_frame(holdings,num_rows='dynamic',hide_index=True,use_container_width=True,
                     key=f'holdings_editor_{st.session_state.get("holdings_revision",0)}',
-                    column_config={'shares':st.column_config.NumberColumn('보유수량 / CASH 원화 잔액',min_value=0.,format='%,.0f'),
+                    column_config={'shares':st.column_config.NumberColumn('보유수량 / CASH 원화 잔액',min_value=0.,format='%.0f'),
                                    'ticker':st.column_config.TextColumn('티커'),'target_pct':st.column_config.NumberColumn('기본 목표 (%)',min_value=0.,max_value=100.)})
                 if st.form_submit_button('보유내역 확인·적용',disabled=bool(st.session_state.get('holding_drafts'))):
                     try:
@@ -506,6 +507,33 @@ if page=='이번 달':
                         st.session_state.input_notice='전체 보유내역을 적용했습니다. 종가를 조회해 주세요.'
                         st.rerun()
                     except DataError as e:st.error(str(e))
+            if not holdings.empty:
+                st.caption('표의 휴지통 아이콘 대신, 아래에서 삭제할 종목을 선택해도 됩니다.')
+                row_labels=[f'{r.strategy} · {r.account} · {r.ticker} ({r.name or "이름 없음"})' for r in holdings.itertuples()]
+                remove_rows=st.multiselect('삭제할 종목 선택',list(range(len(holdings))),format_func=lambda i:row_labels[i],key='holdings_remove_select')
+                col_delete,col_fill_names=st.columns(2)
+                if col_delete.button('선택한 종목 삭제',disabled=not remove_rows,use_container_width=True):
+                    remaining=holdings.drop(holdings.index[remove_rows]).reset_index(drop=True)
+                    install({'holdings':remaining})
+                    st.session_state.demo=False
+                    st.success(f'{len(remove_rows)}개 종목을 삭제했습니다.')
+                    st.rerun()
+                if col_fill_names.button('티커로 종목명 채우기',use_container_width=True,help='종목명이 비어 있는 행만 Yahoo Finance에서 조회해 채웁니다'):
+                    with st.spinner('종목명을 조회하는 중입니다…'):
+                        filled=holdings.copy()
+                        failed=[]
+                        for idx,row in filled.iterrows():
+                            ticker=str(row.get('ticker','')).strip()
+                            name=str(row.get('name','')).strip()
+                            if not ticker or name:continue
+                            found=engine.fetch_asset_name(ticker,row.get('market',''))
+                            if found:filled.at[idx,'name']=found
+                            else:failed.append(ticker)
+                    install({'holdings':filled})
+                    st.session_state.demo=False
+                    if failed:st.warning('다음 티커는 이름을 찾지 못했습니다: '+', '.join(failed)+' · 직접 입력해 주세요')
+                    else:st.success('종목명을 채웠습니다.')
+                    st.rerun()
     if st.session_state.get('input_notice'):
         st.success(st.session_state.pop('input_notice'))
     manual_candidates=[]
@@ -763,7 +791,7 @@ elif page=='전략실':
         with st.form('strategy_settings'):
             edited=edit_frame(st.session_state.strategies,hide_index=True,num_rows='dynamic',use_container_width=True,
                 column_config={'tolerance_pct':st.column_config.NumberColumn('허용 괴리 (%p)',min_value=0.,max_value=100.),
-                               'cash_reserve':st.column_config.NumberColumn('현금 유보액 (원)',min_value=0.,format='%,.0f'),
+                               'cash_reserve':st.column_config.NumberColumn('현금 유보액 (원)',min_value=0.,format='%.0f'),
                                'fractional_us':st.column_config.CheckboxColumn('미국 소수점 수량 허용')})
             st.caption('허용 괴리 2는 목표 대비 2%p를 뜻합니다. CASH는 원화만 지원하며 외화 현금은 원화 환산 후 직접 입력합니다.')
             if st.form_submit_button('전략 설정 검증·적용'):
