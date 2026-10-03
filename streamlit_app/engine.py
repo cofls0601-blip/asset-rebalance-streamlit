@@ -35,6 +35,26 @@ def yahoo_symbol(ticker: str, market: str) -> str:
     return ticker
 
 
+def fetch_asset_name(ticker: str, market: str = "") -> str | None:
+    """Look up a human-readable asset name for a ticker via Yahoo Finance.
+
+    Returns None (never raises) when the ticker is blank, CASH, or the lookup
+    fails for any reason — callers should treat None as "could not resolve".
+    """
+    ticker = str(ticker).strip()
+    if not ticker:
+        return None
+    if ticker.upper() == "CASH":
+        return "현금"
+    try:
+        symbol = yahoo_symbol(ticker, market)
+        info = yf.Ticker(symbol).info
+        name = info.get("shortName") or info.get("longName")
+        return str(name).strip() if name else None
+    except Exception:
+        return None
+
+
 def _series(ticker: str, market: str, as_of: date, adjusted: bool = False) -> pd.Series:
     end = as_of + timedelta(days=1)
     start = as_of - timedelta(days=1600)
