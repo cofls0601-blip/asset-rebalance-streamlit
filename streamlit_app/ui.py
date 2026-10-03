@@ -31,11 +31,11 @@ def numeric_column_config(columns, overrides=None):
     config = {}
     for column in columns:
         if column in MONEY_COLUMNS:
-            config[column] = st.column_config.NumberColumn(format='%,.0f')
+            config[column] = st.column_config.NumberColumn(format='localized')
         elif column in PRICE_COLUMNS:
-            config[column] = st.column_config.NumberColumn(format='%,.0f')
+            config[column] = st.column_config.NumberColumn(format='localized')
         elif column in QUANTITY_COLUMNS:
-            config[column] = st.column_config.NumberColumn(format='%,.4f')
+            config[column] = st.column_config.NumberColumn(format='%.4f')
         elif column in PERCENT_COLUMNS:
             config[column] = st.column_config.NumberColumn(format='%.2f')
     config.update(overrides or {})
