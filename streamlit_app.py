@@ -41,6 +41,11 @@ st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layo
 st.markdown('<style>'+Path(__file__).with_name('streamlit_app').joinpath('theme.css').read_text(encoding='utf-8')+'</style>',unsafe_allow_html=True)
 st.markdown('<meta name="color-scheme" content="light only">',unsafe_allow_html=True)
 
+CHART_COLORS=['#b95e3d','#477665','#336f9a','#c9a227','#8a6f9e','#9aa39b','#d68a6a']
+CHART_LAYOUT=dict(margin=dict(l=0,r=44,t=8,b=0),paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',
+    font=dict(family='Pretendard, -apple-system, sans-serif',size=13,color='#292d2a'),xaxis_title=None,yaxis_title=None)
+CHART_CONFIG={'displayModeBar':False,'responsive':True}
+
 PAGE_DESCRIPTIONS={
     '이번 달':'보유내역과 실제 종가를 확인하고 이번 평가의 주문안을 준비합니다.',
     '자산 현황':'전략·역할·자산 분류별 평가액과 목표 비중의 차이를 살펴봅니다.',
@@ -632,8 +637,12 @@ elif page=='자산 현황':
         if col=='category' and not st.session_state.category_targets.empty:
             grouped=grouped.merge(st.session_state.category_targets,on='category',how='outer').fillna(0)
             grouped['목표대비괴리(%p)']=grouped['비중(%)']-grouped.target_pct
-        st.plotly_chart(px.bar(grouped,x='비중(%)',y=col,orientation='h',color=col,
-            color_discrete_sequence=['#f7931a','#38bdf8','#a855f7','#22c55e','#eab308','#64748b']),use_container_width=True)
+        bar=px.bar(grouped.sort_values('비중(%)'),x='비중(%)',y=col,orientation='h',color=col,text='비중(%)',
+            color_discrete_sequence=CHART_COLORS)
+        bar.update_traces(texttemplate='%{text:.1f}%',textposition='outside',cliponaxis=False,marker_line_width=0)
+        bar.update_layout(**CHART_LAYOUT,showlegend=False,height=max(200,56*len(grouped)+40),
+            xaxis=dict(visible=False,range=[0,max(100,float(grouped['비중(%)'].max())*1.18)]),yaxis=dict(title=None),bargap=.38)
+        st.plotly_chart(bar,use_container_width=True,config=CHART_CONFIG)
         show_frame(grouped,hide_index=True,use_container_width=True)
         if col=='category':
             with st.expander('전체 분류 목표 편집'):
@@ -867,7 +876,7 @@ elif page=='기록':
                     c.metric('MDD · 관측일 기준',fmt(metrics['mdd']))
                     d.metric('XIRR',fmt(metrics['xirr']))
                     st.caption('불규칙한 평가일 사이의 입출금을 날짜 가중한 Modified Dietz 근사입니다. 배당·비용은 별도로 추적하지 않습니다.')
-                    st.plotly_chart(px.line(eq,x='date',y='index',markers=True,labels={'index':'시작 100','date':'평가일'}),use_container_width=True)
+                    st.plotly_chart(px.line(eq,x='date',y='index',markers=True,labels={'index':'시작 100','date':'평가일'},color_discrete_sequence=CHART_COLORS).update_layout(**CHART_LAYOUT,height=280),use_container_width=True,config=CHART_CONFIG)
                     show_frame(eq,hide_index=True,use_container_width=True)
                     risk=monthly_risk(eq)
                     with st.expander('월간 위험 지표·벤치마크'):
@@ -880,13 +889,13 @@ elif page=='기록':
                         if st.button('동일 평가일·원화 기준 벤치마크 조회'):
                             try:
                                 compare=eq[['date','index']].merge(benchmark_index(benchmark,eq.date,prices),on='date')
-                                st.plotly_chart(px.line(compare,x='date',y=['index','benchmark']),use_container_width=True)
+                                st.plotly_chart(px.line(compare,x='date',y=['index','benchmark'],color_discrete_sequence=CHART_COLORS).update_layout(**CHART_LAYOUT,height=280,legend=dict(orientation='h',y=-.2,title=None)),use_container_width=True,config=CHART_CONFIG)
                                 st.caption('벤치마크는 원화 환산 비수정 종가·배당 제외입니다. 계좌 안에 남은 분배금은 포트폴리오 잔고에 포함될 수 있어 총수익률과 차이가 있습니다.')
                             except (DataError,ValueError) as e:st.error(str(e))
                 st.subheader('분류별 기록')
                 cat_history=effective if selected=='전체' else effective[effective.strategy.eq(selected)]
                 cats=classification_view(cat_history.rename(columns={'value':'평가액'})).groupby(['date','category'],as_index=False)['평가액'].sum().rename(columns={'평가액':'value'})
-                st.plotly_chart(px.area(cats,x='date',y='value',color='category'),use_container_width=True)
+                st.plotly_chart(px.area(cats,x='date',y='value',color='category',color_discrete_sequence=CHART_COLORS).update_layout(**CHART_LAYOUT,height=300,legend=dict(orientation='h',y=-.2,title=None)),use_container_width=True,config=CHART_CONFIG)
                 with st.expander('원본 기록·개정'):show_frame(history,hide_index=True,use_container_width=True)
                 st.subheader('실제 체결 이력');show_frame(st.session_state.actions,hide_index=True,use_container_width=True)
             except DataError as e:st.error(str(e))
