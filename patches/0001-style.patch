@@ -1,0 +1,79 @@
+From 6aafb9fca3dccef77a46f41ac573d5d948e441e9 Mon Sep 17 00:00:00 2001
+From: rebalance <a@b>
+Date: Sat, 3 Oct 2026 04:10:38 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?style:=20=EB=AA=A8=EB=B0=94=EC=9D=BC=20?=
+ =?UTF-8?q?=EC=9E=85=EB=A0=A5=EC=B9=B8=C2=B7=EB=B2=84=ED=8A=BC=C2=B7?=
+ =?UTF-8?q?=EC=83=81=EB=8B=A8=20=EB=B0=94=EB=A5=BC=20=EB=AF=B8=EB=A6=AC?=
+ =?UTF-8?q?=EB=B3=B4=EA=B8=B0=20=EB=94=94=EC=9E=90=EC=9D=B8=EC=97=90=20?=
+ =?UTF-8?q?=EB=A7=9E=EA=B2=8C=20=EC=A0=95=EB=A6=AC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ streamlit_app/theme.css | 51 ++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 50 insertions(+), 1 deletion(-)
+
+diff --git a/streamlit_app/theme.css b/streamlit_app/theme.css
+index ef3e1ee..6067915 100644
+--- a/streamlit_app/theme.css
++++ b/streamlit_app/theme.css
+@@ -155,5 +155,54 @@ p, li { line-height: 1.55; }
+   .summary-mini strong { font-size: 1.04rem; }
+   .order-row { gap: .45rem; padding: .65rem .6rem; }
+   .order-amount strong { font-size: .84rem; }
+-  .stButton > button, .stDownloadButton > button, [data-testid="stFormSubmitButton"] > button { width: 100%; }
++  .stButton button, .stDownloadButton button, [data-testid="stFormSubmitButton"] button { width: 100%; }
++}
++
++/* ---- mobile polish: match preview design ---- */
++@media (max-width: 800px) {
++  .block-container { padding: .6rem .9rem calc(3.5rem + env(safe-area-inset-bottom)); }
++  .st-key-mobile_toolbar { margin: 0 0 1rem; padding: .7rem .8rem .75rem; border: 1px solid var(--warm-border); border-radius: 16px;
++    background: color-mix(in srgb, var(--warm-surface) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
++    box-shadow: 0 6px 18px -14px rgba(38,61,51,.45); }
++  .st-key-mobile_toolbar [data-testid="stVerticalBlock"] { gap: .5rem; }
++  .mobile-brand { margin: 0 0 .15rem; line-height: 1.2; }
++  .st-key-mobile_toolbar [data-testid="stWidgetLabel"] { display: none; }
++  .st-key-mobile_toolbar div[data-baseweb="select"], .st-key-mobile_toolbar [data-testid="stDateInputField"] { min-height: 44px; background: var(--warm-bg) !important; border: 1px solid var(--warm-border) !important; border-radius: 12px !important; }
++  .st-key-mobile_toolbar [data-baseweb="select"] * , .st-key-mobile_toolbar [data-baseweb="input"] input { font-size: 15px !important; font-weight: 650 !important; }
++  .st-key-mobile_toolbar [data-testid="stPopover"] button { min-height: 36px !important; border-radius: 10px; font-size: .8rem !important; color: var(--warm-muted); background: transparent; border-style: dashed; }
++  .eyebrow { margin-top: 0; }
++  /* visible, thumb-sized fields; 16px avoids iOS zoom */
++  [data-testid="stTextInputRootElement"], .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div, [data-baseweb="textarea"], [data-testid="stNumberInputContainer"] {
++    min-height: 46px; background: #fff !important; border: 1px solid var(--warm-border) !important; border-radius: 12px !important; }
++  [data-testid="stTextInputRootElement"]:focus-within, [data-testid="stNumberInputContainer"]:focus-within, [data-baseweb="select"] > div:focus-within { border-color: var(--terracotta) !important; box-shadow: 0 0 0 3px var(--terracotta-soft); }
++  [data-baseweb="input"] input, [data-baseweb="textarea"] textarea, [data-baseweb="select"] * { font-size: 16px !important; }
++  [data-baseweb="input"] input { font-weight: 650; }
++  [data-testid="stTextInputRootElement"] [data-baseweb="base-input"], [data-testid="stNumberInputContainer"] [data-baseweb="base-input"], [data-testid="stTextInputRootElement"] > div, [data-testid="stNumberInputContainer"] > div { background: transparent !important; border: 0 !important; }
++  .st-key-mobile_toolbar .stMarkdown, .st-key-mobile_toolbar .stElementContainer:has(.mobile-brand) { height: auto !important; min-height: 22px; overflow: visible; }
++  [data-testid="stNumberInput"] button { min-width: 44px !important; min-height: 44px !important; }
++  [data-baseweb="menu"] li, [role="option"] { min-height: 46px !important; display: flex !important; align-items: center !important; }
++  /* buttons: full width, thumb height */
++  .stButton button, .stDownloadButton button, [data-testid="stFormSubmitButton"] button { width: 100%; min-height: 50px; border-radius: 13px; font-size: 15px !important; }
++  .stButton button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] { box-shadow: 0 8px 18px -10px var(--terracotta); }
++  .stButton button:active, .stDownloadButton button:active, [data-testid="stFormSubmitButton"] button:active { transform: scale(.985); }
++  /* cards & blocks */
++  [data-testid="stExpander"] { border-radius: 16px; }
++  [data-testid="stExpander"] summary { min-height: 52px; }
++  [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 16px !important; }
++  [data-testid="stDataFrame"], [data-testid="stDataEditor"] { border: 1px solid var(--warm-border); border-radius: 14px; overflow: hidden; }
++  .st-key-holdings_edit_mode [role="radiogroup"] { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 3px; background: #efe9e1; border-radius: 12px; }
++  .st-key-holdings_edit_mode [role="radiogroup"] label { justify-content: center; border: 0 !important; border-radius: 10px !important; background: transparent !important; min-height: 40px; }
++  .st-key-holdings_edit_mode [role="radiogroup"] label:has(input:checked) { background: #fff !important; box-shadow: 0 1px 2px rgba(0,0,0,.08); color: var(--warm-ink); }
++  .st-key-holdings_edit_mode [role="radiogroup"] label > div:first-child { display: none; }
++  .holding-head { margin-top: .8rem; }
++  .holding-head span { font-size: .76rem; }
++  .rule-preview { font-size: .95rem; padding: 1rem 1.05rem; border-radius: 16px; }
++  [data-testid="stCaptionContainer"] p { font-size: .82rem !important; }
++}
++@media (max-width: 800px) {
++  .st-key-mobile_toolbar [data-testid="stDateInputField"] [data-baseweb="input"], .st-key-mobile_toolbar [data-testid="stDateInputField"] [data-baseweb="base-input"] { border: 0 !important; background: transparent !important; }
++  [data-testid="stDateInputField"] { overflow: hidden; }
++}
++@media (max-width: 800px) {
++  .stSelectbox [data-baseweb="select"] > div:first-child, .stMultiSelect [data-baseweb="select"] > div:first-child { border: 1px solid var(--warm-border) !important; background-color: #fff !important; border-radius: 12px !important; min-height: 46px; }
+ }
+-- 
+2.47.3
+
