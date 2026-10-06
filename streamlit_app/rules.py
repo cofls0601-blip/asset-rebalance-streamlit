@@ -53,6 +53,7 @@ def evaluate(spec, holdings, day, fetch):
     result = {'status':'보유 유지', 'passed':None, 'winner':None, 'evidence':[],
               'targets':current.copy(), 'message':'', 'action':'hold_buy'}
     cache = {}
+    used = set()
     def month_values(prices):
         monthly = prices.resample('ME').last().dropna()
         if spec.get('completed_months_only', False):
@@ -81,14 +82,12 @@ def evaluate(spec, holdings, day, fetch):
         used.add(ticker)
         return cache[ticker]
 
-    try:
-        frequency = spec.get('scope', {}).get('run', 'monthly')
-        result['next_run'] = next_run(day, frequency, spec.get('scope', {}).get('months')).isoformat()
-        if not due(day, frequency, spec.get('scope', {}).get('months')):
-            result.update(status='일정 대기', message=f'다음 기준일 {result["next_run"]}')
-            return result
+    def evaluate_branch(conditions, branch_no):
+        # Evaluate one branch's AND/OR condition chain; append evidence rows (with
+        # group label branch_no) to result in place; return whether the branch passed.
+        nonlocal used
         flags = []
-        for index, c in enumerate(spec.get('conditions', [])):
+        for index, c in enumerate(conditions):
             used=set()
             op = c.get('op')
             value, threshold = None, None
@@ -190,20 +189,47 @@ def evaluate(spec, holdings, day, fetch):
                 raise ValueError('조건 연결은 AND 또는 OR여야 합니다')
             flags.append((bool(passed), connector))
             dates=', '.join(t+': '+str(cache[t].index[-1].date()) for t in sorted(used))
-            result['evidence'].append({'조건':index+1,'티커':c.get('ticker',''), '연산':OPERATORS[op],
+            result['evidence'].append({'그룹':branch_no,'조건':index+1,'티커':c.get('ticker',''), '연산':OPERATORS[op],
                                        '현재값':value, '기준값':threshold, '판정':'충족' if passed else '미충족',
                                        '사용일':dates or str(c.get('observed_date',day)),
                                        '발표일':c.get('published_date',''),'출처':c.get('source','시계열' if used else '입력값'),
                                        '신호조정':'수정종가' if spec.get('signal_adjusted') else '비수정',
                                        '기간':c.get('months',c.get('days',c.get('lookback','')))})
         if not flags:
-            raise ValueError('조건이 없습니다')
-        passed = flags[0][0]
+            raise ValueError(f'{branch_no}번 조건 그룹에 조건이 없습니다')
+        branch_passed = flags[0][0]
         for flag, connector in flags[1:]:
-            passed = passed and flag if connector == 'AND' else passed or flag
-        result['passed'] = passed
-        branch = spec.get('onPass' if passed else 'onFail', {'action':'hold_buy'})
-        action, p = branch.get('action','hold_buy'), branch.get('params',{})
+            branch_passed = branch_passed and flag if connector == 'AND' else branch_passed or flag
+        return branch_passed
+
+    try:
+        frequency = spec.get('scope', {}).get('run', 'monthly')
+        result['next_run'] = next_run(day, frequency, spec.get('scope', {}).get('months')).isoformat()
+        if not due(day, frequency, spec.get('scope', {}).get('months')):
+            result.update(status='일정 대기', message=f'다음 기준일 {result["next_run"]}')
+            return result
+
+        # schema_version 2(단일 조건 그룹: conditions/onPass/onFail)는 branches가 하나뿐인
+        # schema_version 3 형태로 간주해 평가한다 — 기존에 저장된 전략을 다시 저장하지
+        # 않아도 계속 동작하게 하기 위함이다.
+        branches = spec.get('branches')
+        if branches is None:
+            branches = [{'conditions': spec.get('conditions', []), 'action': spec.get('onPass', {'action': 'hold_buy'})}]
+            default_action = spec.get('onFail', {'action': 'hold_buy'})
+        else:
+            if not branches:
+                raise ValueError('조건 그룹이 없습니다')
+            default_action = spec.get('default_action', {'action': 'hold_buy'})
+
+        matched_branch = None
+        for branch_no, branch in enumerate(branches, start=1):
+            if evaluate_branch(branch.get('conditions', []), branch_no):
+                matched_branch = branch
+                result['matched_branch'] = branch_no
+                break
+        result['passed'] = matched_branch is not None
+        branch_action = matched_branch['action'] if matched_branch else default_action
+        action, p = branch_action.get('action','hold_buy'), branch_action.get('params',{})
         if action not in ACTIONS:
             raise ValueError('지원하지 않는 동작')
         if action in ('restore','restore_scope') and not due(day,p.get('restore_frequency','monthly'),p.get('restore_months')):
@@ -277,7 +303,7 @@ def evaluate(spec, holdings, day, fetch):
             targets[target] += buy
         if any(not math.isfinite(v) or v < -1e-7 for v in targets.values()) or abs(sum(targets.values())-total) > .01:
             raise ValueError('목표 금액 보존 검증 실패')
-        result.update(targets=targets, action=action, status='조건 충족' if passed else '조건 미충족',
+        result.update(targets=targets, action=action, status='조건 충족' if matched_branch else '조건 미충족',
                       message=str(p.get('message') or ACTIONS[action]))
     except Exception as exc:
         result.update(status='계산 차단', passed=None, action='hold_buy', targets=current.copy(), message=str(exc))
