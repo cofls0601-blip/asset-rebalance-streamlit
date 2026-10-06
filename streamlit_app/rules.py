@@ -209,6 +209,12 @@ def evaluate(spec, holdings, day, fetch):
             result.update(status='일정 대기', message=f'다음 기준일 {result["next_run"]}')
             return result
 
+        # schema_version 4: 서로 담당 종목이 겹치지 않는 완전히 독립적인 규칙들.
+        # 각 규칙은 자신의 scope(담당 종목) 안에서만 then/else 동작을 적용하고,
+        # 다른 규칙의 scope에는 손대지 않는다. scope에 포함되지 않은 종목은 그대로 유지된다.
+        if spec.get('rules') is not None:
+            return _evaluate_independent_rules(spec, holdings, day, current, total, result, evaluate_branch)
+
         # schema_version 2(단일 조건 그룹: conditions/onPass/onFail)는 branches가 하나뿐인
         # schema_version 3 형태로 간주해 평가한다 — 기존에 저장된 전략을 다시 저장하지
         # 않아도 계속 동작하게 하기 위함이다.
@@ -230,81 +236,147 @@ def evaluate(spec, holdings, day, fetch):
         result['passed'] = matched_branch is not None
         branch_action = matched_branch['action'] if matched_branch else default_action
         action, p = branch_action.get('action','hold_buy'), branch_action.get('params',{})
-        if action not in ACTIONS:
-            raise ValueError('지원하지 않는 동작')
-        if action in ('restore','restore_scope') and not due(day,p.get('restore_frequency','monthly'),p.get('restore_months')):
-            result.update(status='일정 대기',message='조건은 판정했지만 목표 복원 주기가 아닙니다')
+        restore_wait = _restore_due_check(action, p, day)
+        if restore_wait:
+            result.update(status='일정 대기', message=restore_wait)
             return result
-        target = str(p.get('ticker','')).strip().upper()
-        if target == '__WINNER__':
-            target = result['winner']
-        targets = current.copy()
-        if action in ('move_all','set_weight','buy_cash_pct') and target not in current:
-            raise ValueError('동작 대상이 전략 구성 종목에 없습니다')
-        if action in ('restore_scope','switch_scope'):
-            tickers = p.get('tickers', [])
-            if p.get('role'):
-                tickers = holdings.loc[holdings['role'].eq(p['role']),'ticker'].tolist()
-            if not tickers or any(t not in current or t=='CASH' for t in tickers):
-                raise ValueError('전환/복원할 종목 또는 역할을 선택하세요')
-            if action == 'switch_scope':
-                if target not in current or target in tickers:
-                    raise ValueError('별도의 대체 대상이 필요합니다')
-                amount = sum(current[t] for t in tickers)
-                for t in tickers: targets[t]=0.
-                targets[target] += amount
-            else:
-                if 'CASH' not in current:
-                    raise ValueError('지정 자산 복원에는 CASH 행이 필요합니다')
-                for t in tickers:
-                    targets[t] = total*float(holdings.loc[holdings.ticker.eq(t),'target_pct'].sum())/100
-                targets['CASH'] = total-sum(v for t,v in targets.items() if t!='CASH')
-        elif action == 'buy_to_weight':
-            pct=float(p.get('pct',50))
-            if target not in current or target=='CASH' or 'CASH' not in current or not 0<=pct<=100:
-                raise ValueError('매수 대상·비율·CASH 구성을 확인하세요')
-            amount=min(current['CASH'], max(0.,total*pct/100-current[target]))
-            targets[target] += amount
-            targets['CASH'] -= amount
-        elif action == 'restore':
-            weights = dict(zip(holdings['ticker'], holdings['target_pct'].astype(float)))
-            if any(x < 0 or x > 100 for x in weights.values()) or abs(sum(weights.values())-100) > .01:
-                raise ValueError('목표비중 합계는 100%여야 합니다')
-            targets = {t: total*w/100 for t,w in weights.items()}
-        elif action == 'sell_all':
-            if 'CASH' not in current:
-                raise ValueError('현금화에는 CASH 행이 필요합니다')
-            targets = {t:total if t == 'CASH' else 0 for t in current}
-        elif action == 'move_all':
-            cash_pct = float(p.get('cashPct', 0))
-            if not 0 <= cash_pct <= 100 or cash_pct and 'CASH' not in current:
-                raise ValueError('현금 비중 또는 CASH 구성을 확인하세요')
-            targets = {t:0.0 for t in current}
-            targets[target] = total*(1-cash_pct/100)
-            if 'CASH' in targets:
-                targets['CASH'] += total*cash_pct/100
-        elif action == 'set_weight':
-            pct = float(p.get('pct',50))
-            if not 0 <= pct <= 100:
-                raise ValueError('비중은 0~100%여야 합니다')
-            others = [t for t in current if t != target]
-            if not others and pct != 100:
-                raise ValueError('잔여 비중을 배분할 종목이 없습니다')
-            remaining = sum(current[t] for t in others)
-            targets[target] = total*pct/100
-            for t in others:
-                targets[t] = total*(1-pct/100)*(current[t]/remaining if remaining else 1/len(others))
-        elif action == 'buy_cash_pct':
-            pct = float(p.get('pct',50))
-            if 'CASH' not in current or not 0 <= pct <= 100:
-                raise ValueError('CASH 구성과 매수 비율을 확인하세요')
-            buy = current['CASH']*pct/100
-            targets['CASH'] -= buy
-            targets[target] += buy
-        if any(not math.isfinite(v) or v < -1e-7 for v in targets.values()) or abs(sum(targets.values())-total) > .01:
-            raise ValueError('목표 금액 보존 검증 실패')
+        targets = _apply_action(action, p, current, total, holdings, result)
         result.update(targets=targets, action=action, status='조건 충족' if matched_branch else '조건 미충족',
                       message=str(p.get('message') or ACTIONS[action]))
     except Exception as exc:
         result.update(status='계산 차단', passed=None, action='hold_buy', targets=current.copy(), message=str(exc))
+    return result
+
+
+def _restore_due_check(action, p, day):
+    # Return a wait-message if a restore-type action's own cadence hasn't arrived yet, else None.
+    if action in ('restore', 'restore_scope') and not due(day, p.get('restore_frequency', 'monthly'), p.get('restore_months')):
+        return '조건은 판정했지만 목표 복원 주기가 아닙니다'
+    return None
+
+
+def _apply_action(action, p, current, total, holdings, result):
+    # Apply one action's effect to a (possibly scoped) current/total/holdings universe.
+    # Used both for the single whole-portfolio decision (legacy/branches modes) and,
+    # with a ticker-scoped current/total/holdings, for each independent rule in the
+    # 'rules' (parallel) mode — so every action keeps exactly the same validation and
+    # capital-conservation guarantees regardless of which mode calls it.
+    if action not in ACTIONS:
+        raise ValueError('지원하지 않는 동작')
+    target = str(p.get('ticker', '')).strip().upper()
+    if target == '__WINNER__':
+        target = result['winner']
+    targets = current.copy()
+    if action in ('move_all', 'set_weight', 'buy_cash_pct') and target not in current:
+        raise ValueError('동작 대상이 전략 구성 종목에 없습니다')
+    if action in ('restore_scope', 'switch_scope'):
+        tickers = p.get('tickers', [])
+        if p.get('role'):
+            tickers = holdings.loc[holdings['role'].eq(p['role']), 'ticker'].tolist()
+        if not tickers or any(t not in current or t == 'CASH' for t in tickers):
+            raise ValueError('전환/복원할 종목 또는 역할을 선택하세요')
+        if action == 'switch_scope':
+            if target not in current or target in tickers:
+                raise ValueError('별도의 대체 대상이 필요합니다')
+            amount = sum(current[t] for t in tickers)
+            for t in tickers: targets[t] = 0.
+            targets[target] += amount
+        else:
+            if 'CASH' not in current:
+                raise ValueError('지정 자산 복원에는 CASH 행이 필요합니다')
+            for t in tickers:
+                targets[t] = total * float(holdings.loc[holdings.ticker.eq(t), 'target_pct'].sum()) / 100
+            targets['CASH'] = total - sum(v for t, v in targets.items() if t != 'CASH')
+    elif action == 'buy_to_weight':
+        pct = float(p.get('pct', 50))
+        if target not in current or target == 'CASH' or 'CASH' not in current or not 0 <= pct <= 100:
+            raise ValueError('매수 대상·비율·CASH 구성을 확인하세요')
+        amount = min(current['CASH'], max(0., total * pct / 100 - current[target]))
+        targets[target] += amount
+        targets['CASH'] -= amount
+    elif action == 'restore':
+        weights = dict(zip(holdings['ticker'], holdings['target_pct'].astype(float)))
+        if any(x < 0 or x > 100 for x in weights.values()) or abs(sum(weights.values()) - 100) > .01:
+            raise ValueError('목표비중 합계는 100%여야 합니다')
+        targets = {t: total * w / 100 for t, w in weights.items()}
+    elif action == 'sell_all':
+        if 'CASH' not in current:
+            raise ValueError('현금화에는 CASH 행이 필요합니다')
+        targets = {t: total if t == 'CASH' else 0 for t in current}
+    elif action == 'move_all':
+        cash_pct = float(p.get('cashPct', 0))
+        if not 0 <= cash_pct <= 100 or cash_pct and 'CASH' not in current:
+            raise ValueError('현금 비중 또는 CASH 구성을 확인하세요')
+        targets = {t: 0.0 for t in current}
+        targets[target] = total * (1 - cash_pct / 100)
+        if 'CASH' in targets:
+            targets['CASH'] += total * cash_pct / 100
+    elif action == 'set_weight':
+        pct = float(p.get('pct', 50))
+        if not 0 <= pct <= 100:
+            raise ValueError('비중은 0~100%여야 합니다')
+        others = [t for t in current if t != target]
+        if not others and pct != 100:
+            raise ValueError('잔여 비중을 배분할 종목이 없습니다')
+        remaining = sum(current[t] for t in others)
+        targets[target] = total * pct / 100
+        for t in others:
+            targets[t] = total * (1 - pct / 100) * (current[t] / remaining if remaining else 1 / len(others))
+    elif action == 'buy_cash_pct':
+        pct = float(p.get('pct', 50))
+        if 'CASH' not in current or not 0 <= pct <= 100:
+            raise ValueError('CASH 구성과 매수 비율을 확인하세요')
+        buy = current['CASH'] * pct / 100
+        targets['CASH'] -= buy
+        targets[target] += buy
+    if any(not math.isfinite(v) or v < -1e-7 for v in targets.values()) or abs(sum(targets.values()) - total) > .01:
+        raise ValueError('목표 금액 보존 검증 실패')
+    return targets
+
+
+def _evaluate_independent_rules(spec, holdings, day, current, total, result, evaluate_branch):
+    # 서로 담당 종목(scope)이 겹치지 않는 독립 규칙들을 각각 평가해 동시에 적용한다.
+    # scope로 지정되지 않은 종목은 손대지 않고 현재 값 그대로 둔다.
+    rules = spec.get('rules')
+    if not rules:
+        raise ValueError('독립 규칙이 없습니다')
+    targets = current.copy()
+    covered = set()
+    outcomes = []
+    for rule_no, rule in enumerate(rules, start=1):
+        name = rule.get('name') or f'규칙 {rule_no}'
+        scope = rule.get('scope') or []
+        if not scope:
+            raise ValueError(f'{name}: 담당 종목(scope)을 지정하세요')
+        missing = [t for t in scope if t not in current]
+        if missing:
+            raise ValueError(f'{name}: 담당 종목 중 전략 구성에 없는 종목이 있습니다 ({", ".join(missing)})')
+        overlap = covered & set(scope)
+        if overlap:
+            raise ValueError(f'{name}: 다른 규칙과 담당 종목이 겹칩니다 ({", ".join(sorted(overlap))})')
+        covered |= set(scope)
+
+        passed = evaluate_branch(rule.get('conditions', []), rule_no)
+        chosen = (rule.get('then') if passed else rule.get('else')) or {'action': 'hold_buy', 'params': {}}
+        action, p = chosen.get('action', 'hold_buy'), chosen.get('params', {})
+        restore_wait = _restore_due_check(action, p, day)
+        if restore_wait:
+            raise ValueError(f'{name}: {restore_wait}')
+
+        scope_current = {t: current[t] for t in scope}
+        scope_total = sum(scope_current.values())
+        scope_holdings = holdings[holdings['ticker'].astype(str).isin(scope)]
+        scope_targets = _apply_action(action, p, scope_current, scope_total, scope_holdings, result)
+        targets.update(scope_targets)
+        outcomes.append({'그룹': rule_no, '이름': name, '판정': '충족' if passed else '미충족', '동작': ACTIONS.get(action, action)})
+
+    if any(not math.isfinite(v) or v < -1e-7 for v in targets.values()) or abs(sum(targets.values()) - total) > .01:
+        raise ValueError('목표 금액 보존 검증 실패')
+
+    result['rules'] = outcomes
+    result['passed'] = True
+    result['action'] = 'multiple'
+    result['status'] = '조건 판정 완료'
+    result['message'] = ' · '.join(f"{o['이름']}: {o['동작']}" for o in outcomes)
+    result['targets'] = targets
     return result
