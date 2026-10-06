@@ -182,6 +182,62 @@ class SpecTests(unittest.TestCase):
         result = evaluate(spec,self.holdings,self.day,self.fetch)
         self.assertEqual(result['status'],'계산 차단')
 
+    def test_independent_rules_apply_simultaneously_to_separate_scopes(self):
+        # 규칙1(AAA 담당): AAA>=150(참) -> AAA 100%.
+        # 규칙2(BBB 담당): BBB>=1000(거짓) -> else인 BBB 0%, CASH로 이동은 CASH가 scope 밖이라 불가하므로
+        #                 hold_buy로 BBB 유지.
+        spec = {'schema_version':4,'scope':{'run':'monthly','market':'MIX'},
+                'rules':[
+                    {'name':'주식 슬리브','scope':['AAA'],
+                     'conditions':[{'ticker':'AAA','op':'price_above_abs','price':150}],
+                     'then':{'action':'set_weight','params':{'ticker':'AAA','pct':100}},
+                     'else':{'action':'hold_buy','params':{}}},
+                    {'name':'채권 슬리브','scope':['BBB'],
+                     'conditions':[{'ticker':'BBB','op':'price_above_abs','price':1000}],
+                     'then':{'action':'set_weight','params':{'ticker':'BBB','pct':100}},
+                     'else':{'action':'hold_buy','params':{}}},
+                ]}
+        result = evaluate(spec,self.holdings,self.day,self.fetch)
+        self.assertEqual(result['status'],'조건 판정 완료')
+        # AAA 규칙은 충족 -> scope(AAA) 안에서 100% -> 600 그대로(이미 scope 전체였으므로)
+        # BBB 규칙은 미충족 -> hold_buy -> BBB 그대로 200
+        # CASH는 어느 scope에도 없으므로 그대로 200
+        self.assertEqual(result['targets'],{'AAA':600.0,'BBB':200.0,'CASH':200.0})
+        self.assertEqual(len(result['rules']),2)
+        self.assertEqual(result['rules'][0]['판정'],'충족')
+        self.assertEqual(result['rules'][1]['판정'],'미충족')
+
+    def test_independent_rules_reject_overlapping_scope(self):
+        spec = {'schema_version':4,'scope':{'run':'monthly','market':'MIX'},
+                'rules':[
+                    {'name':'r1','scope':['AAA'],'conditions':[{'ticker':'AAA','op':'price_above_abs','price':0}],
+                     'then':{'action':'hold_buy','params':{}},'else':{'action':'hold_buy','params':{}}},
+                    {'name':'r2','scope':['AAA'],'conditions':[{'ticker':'AAA','op':'price_above_abs','price':0}],
+                     'then':{'action':'hold_buy','params':{}},'else':{'action':'hold_buy','params':{}}},
+                ]}
+        result = evaluate(spec,self.holdings,self.day,self.fetch)
+        self.assertEqual(result['status'],'계산 차단')
+        self.assertIn('겹칩니다',result['message'])
+
+    def test_independent_rule_requires_scope(self):
+        spec = {'schema_version':4,'scope':{'run':'monthly','market':'MIX'},
+                'rules':[{'name':'r1','scope':[],'conditions':[{'ticker':'AAA','op':'price_above_abs','price':0}],
+                          'then':{'action':'hold_buy','params':{}},'else':{'action':'hold_buy','params':{}}}]}
+        result = evaluate(spec,self.holdings,self.day,self.fetch)
+        self.assertEqual(result['status'],'계산 차단')
+        self.assertIn('scope',result['message'])
+
+    def test_independent_rules_untouched_tickers_keep_current_value(self):
+        # scope 밖 CASH는 어떤 규칙도 다루지 않으므로 그대로 보존되어야 한다.
+        spec = {'schema_version':4,'scope':{'run':'monthly','market':'MIX'},
+                'rules':[{'name':'r1','scope':['AAA','BBB'],
+                          'conditions':[{'ticker':'AAA','op':'price_above_abs','price':150}],
+                          'then':{'action':'set_weight','params':{'ticker':'AAA','pct':70}},
+                          'else':{'action':'hold_buy','params':{}}}]}
+        result = evaluate(spec,self.holdings,self.day,self.fetch)
+        self.assertEqual(result['targets']['CASH'],200.0)
+        self.assertAlmostEqual(result['targets']['AAA']+result['targets']['BBB'],800.0)
+
     def test_legacy_schema_still_works_unchanged(self):
         # schema_version 2 (conditions/onPass/onFail) 전략이 branches 없이도 그대로 동작해야 한다.
         spec = self.spec({'ticker':'AAA','op':'price_above_abs','price':150},'set_weight',{'ticker':'AAA','pct':85})
