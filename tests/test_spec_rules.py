@@ -120,6 +120,76 @@ class SpecTests(unittest.TestCase):
         result = evaluate(spec,self.holdings,self.day,self.fetch)
         self.assertEqual(result['targets'],{'AAA':700,'BBB':200,'CASH':100})
 
+    def multi_spec(self, branches, default_action=None):
+        return {'schema_version':3,'scope':{'run':'monthly','market':'MIX'},
+                'branches':branches,
+                'default_action':default_action or {'action':'hold_buy','params':{}}}
+
+    def test_first_matching_branch_wins_and_stops(self):
+        # A: AAA>=150 (참) -> set_weight 90%. B: AAA>=0 (항상 참이지만 먼저 안 걸림) -> sell_all.
+        branches=[
+            {'conditions':[{'ticker':'AAA','op':'price_above_abs','price':150}],
+             'action':{'action':'set_weight','params':{'ticker':'AAA','pct':90}}},
+            {'conditions':[{'ticker':'AAA','op':'price_above_abs','price':0}],
+             'action':{'action':'sell_all','params':{}}},
+        ]
+        result = evaluate(self.multi_spec(branches),self.holdings,self.day,self.fetch)
+        self.assertEqual(result['matched_branch'],1)
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['action'],'set_weight')
+        self.assertEqual(result['targets']['AAA'],900)
+
+    def test_second_branch_used_when_first_fails(self):
+        # A: AAA>=1000 (거짓). B: AAA>=0 (참) -> sell_all.
+        branches=[
+            {'conditions':[{'ticker':'AAA','op':'price_above_abs','price':1000}],
+             'action':{'action':'set_weight','params':{'ticker':'AAA','pct':90}}},
+            {'conditions':[{'ticker':'AAA','op':'price_above_abs','price':0}],
+             'action':{'action':'sell_all','params':{}}},
+        ]
+        result = evaluate(self.multi_spec(branches),self.holdings,self.day,self.fetch)
+        self.assertEqual(result['matched_branch'],2)
+        self.assertEqual(result['action'],'sell_all')
+        self.assertEqual(result['targets'],{'AAA':0,'BBB':0,'CASH':1000})
+
+    def test_no_branch_matches_falls_back_to_default_action(self):
+        branches=[{'conditions':[{'ticker':'AAA','op':'price_above_abs','price':1000}],
+                   'action':{'action':'sell_all','params':{}}}]
+        spec = self.multi_spec(branches, default_action={'action':'set_weight','params':{'ticker':'BBB','pct':40}})
+        result = evaluate(spec,self.holdings,self.day,self.fetch)
+        self.assertIsNone(result.get('matched_branch'))
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['action'],'set_weight')
+        self.assertEqual(result['targets']['BBB'],400)
+
+    def test_evidence_rows_are_labelled_by_branch(self):
+        branches=[
+            {'conditions':[{'ticker':'AAA','op':'price_above_abs','price':1000}],
+             'action':{'action':'sell_all','params':{}}},
+            {'conditions':[{'ticker':'AAA','op':'price_above_abs','price':0}],
+             'action':{'action':'hold_buy','params':{}}},
+        ]
+        result = evaluate(self.multi_spec(branches),self.holdings,self.day,self.fetch)
+        self.assertEqual([row['그룹'] for row in result['evidence']],[1,2])
+
+    def test_empty_branches_list_blocks(self):
+        spec = self.multi_spec([])
+        result = evaluate(spec,self.holdings,self.day,self.fetch)
+        self.assertEqual(result['status'],'계산 차단')
+
+    def test_branch_with_no_conditions_blocks(self):
+        spec = self.multi_spec([{'conditions':[],'action':{'action':'hold_buy','params':{}}}])
+        result = evaluate(spec,self.holdings,self.day,self.fetch)
+        self.assertEqual(result['status'],'계산 차단')
+
+    def test_legacy_schema_still_works_unchanged(self):
+        # schema_version 2 (conditions/onPass/onFail) 전략이 branches 없이도 그대로 동작해야 한다.
+        spec = self.spec({'ticker':'AAA','op':'price_above_abs','price':150},'set_weight',{'ticker':'AAA','pct':85})
+        result = evaluate(spec,self.holdings,self.day,self.fetch)
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['matched_branch'],1)
+        self.assertEqual(result['targets']['AAA'],850)
+
 
 if __name__ == '__main__':
     unittest.main()
