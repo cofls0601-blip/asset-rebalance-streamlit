@@ -227,6 +227,30 @@ if remote_enabled:
     st.session_state.pop('_login_password',None)
 
 
+def recent_ticker_options():
+    """현재 보유내역·과거 평가 기록에서 최근/다른 계좌에 쓰인 종목 메타데이터를 모아 반환합니다.
+
+    매달 같은 종목을 반복 입력하지 않도록, 보유내역 빠른 추가에서 사용합니다.
+    """
+    frames=[]
+    current=st.session_state.get('holdings')
+    if current is not None and not current.empty:
+        frames.append(current[['ticker','name','market','category','role','target_pct']].assign(_rank=pd.Timestamp.now(tz='UTC')))
+    snapshots=st.session_state.get('snapshots')
+    if snapshots is not None and not snapshots.empty:
+        s=snapshots[['ticker','name','category','role','target_pct','date']].copy()
+        s['market']=s['ticker'].astype(str).str.fullmatch(r'\d+').map({True:'KR',False:'US'})
+        s=s.rename(columns={'date':'_rank'})
+        frames.append(s[['ticker','name','market','category','role','target_pct','_rank']])
+    if not frames:
+        return pd.DataFrame(columns=['ticker','name','market','category','role','target_pct'])
+    combined=pd.concat(frames,ignore_index=True)
+    combined=combined[combined.ticker.astype(str).ne('CASH')]
+    combined['_rank']=pd.to_datetime(combined['_rank'],errors='coerce',utc=True)
+    combined=combined.sort_values('_rank',ascending=False).drop_duplicates('ticker',keep='first')
+    return combined.drop(columns='_rank').reset_index(drop=True)
+
+
 def install(data, invalidate=True):
     for k,v in data.items():
         st.session_state[k]=v
@@ -453,8 +477,33 @@ if page=='이번 달':
         workflow_steps(['보유내역 확인','종가 확정','규칙 판정','주문안 검토','기록'],active=2,completed=1)
     with st.expander('1 · 보유수량과 현금 확인',expanded=current_run is None or bool(st.session_state.get('holding_drafts'))):
         st.caption('계좌를 선택해 수량과 원화 현금만 확인하세요. 종목 추가와 목표 비중 변경은 전체 표에서 합니다.')
-        edit_mode=st.radio('보유내역 입력 방식',['계좌별 입력','전체 표'],horizontal=True,key='holdings_edit_mode',label_visibility='collapsed')
         holdings=st.session_state.holdings
+        with st.container(border=True):
+            st.markdown('**최근·다른 계좌에서 쓴 종목 빠르게 추가**')
+            recent=recent_ticker_options()
+            recent=recent[~recent.ticker.astype(str).isin(set(holdings.ticker.astype(str)))]
+            accounts_list=list(holdings[['strategy','account']].drop_duplicates().itertuples(index=False,name=None))
+            if recent.empty:
+                st.caption('추가할 수 있는 최근 종목이 없습니다. 이미 모두 보유 중이거나 기록이 없습니다.')
+            elif not accounts_list:
+                st.caption('먼저 전략·계좌를 하나 이상 만들어 주세요.')
+            else:
+                labels=[f'{r.ticker} · {r.name}' for r in recent.itertuples()]
+                pick=st.selectbox('종목 선택',list(range(len(recent))),format_func=lambda i:labels[i],key='quick_add_pick')
+                account_labels=[f'{s} · {a}' for s,a in accounts_list]
+                account_pick=st.selectbox('추가할 계좌',list(range(len(accounts_list))),format_func=lambda i:account_labels[i],key='quick_add_account')
+                qty=st.number_input('수량 / CASH 원화 잔액',min_value=0.,value=0.,key='quick_add_qty',format='%.0f')
+                if st.button('이 종목 추가',key='quick_add_submit'):
+                    picked=recent.iloc[pick]
+                    strat,acct=accounts_list[account_pick]
+                    new_row={'strategy':strat,'account':acct,'ticker':picked.ticker,'name':picked.name,
+                             'market':picked.market or 'KR','category':picked.category,'role':picked.role,
+                             'target_pct':picked.target_pct,'shares':qty}
+                    install({'holdings':pd.concat([holdings,pd.DataFrame([new_row])],ignore_index=True)})
+                    st.session_state.demo=False
+                    st.success(f'{picked.ticker}을(를) {strat} · {acct}에 추가했습니다.')
+                    st.rerun()
+        edit_mode=st.radio('보유내역 입력 방식',['계좌별 입력','전체 표'],horizontal=True,key='holdings_edit_mode',label_visibility='collapsed')
         if edit_mode=='계좌별 입력':
             accounts=list(holdings[['strategy','account']].drop_duplicates().itertuples(index=False,name=None))
             if accounts:
