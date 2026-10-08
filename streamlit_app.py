@@ -29,7 +29,7 @@ import streamlit_app.ui as ui_helpers
 # helper module during a multi-file deployment. Reload once when the newly
 # deployed allocation helpers are not present so the app does not fail during
 # that short-lived mixed-version state.
-if not hasattr(ui_helpers, 'allocation_status_frame'):
+if not hasattr(ui_helpers, 'allocation_status_frame') or not hasattr(ui_helpers, 'CHART_LAYOUT'):
     ui_helpers = importlib.reload(ui_helpers)
 
 numeric_column_config = ui_helpers.numeric_column_config
@@ -41,10 +41,9 @@ st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layo
 st.markdown('<style>'+Path(__file__).with_name('streamlit_app').joinpath('theme.css').read_text(encoding='utf-8')+'</style>',unsafe_allow_html=True)
 st.markdown('<meta name="color-scheme" content="light only">',unsafe_allow_html=True)
 
-CHART_COLORS=['#b95e3d','#477665','#336f9a','#c9a227','#8a6f9e','#9aa39b','#d68a6a']
-CHART_LAYOUT=dict(margin=dict(l=0,r=44,t=8,b=0),paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',
-    font=dict(family='Pretendard, -apple-system, sans-serif',size=13,color='#292d2a'),xaxis_title=None,yaxis_title=None)
-CHART_CONFIG={'displayModeBar':False,'responsive':True}
+CHART_COLORS=ui_helpers.CHART_COLORS
+CHART_LAYOUT=ui_helpers.CHART_LAYOUT
+CHART_CONFIG=ui_helpers.CHART_CONFIG
 
 PAGE_DESCRIPTIONS={
     '이번 달':'보유내역과 실제 종가를 확인하고 이번 평가의 주문안을 준비합니다.',
@@ -689,8 +688,9 @@ elif page=='자산 현황':
         bar=px.bar(grouped.sort_values('비중(%)'),x='비중(%)',y=col,orientation='h',color=col,text='비중(%)',
             color_discrete_sequence=CHART_COLORS)
         bar.update_traces(texttemplate='%{text:.1f}%',textposition='outside',cliponaxis=False,marker_line_width=0)
-        bar.update_layout(**CHART_LAYOUT,showlegend=False,height=max(200,56*len(grouped)+40),
-            xaxis=dict(visible=False,range=[0,max(100,float(grouped['비중(%)'].max())*1.18)]),yaxis=dict(title=None),bargap=.38)
+        bar.update_layout(**CHART_LAYOUT)
+        bar.update_layout(showlegend=False,height=max(200,56*len(grouped)+40),bargap=.38,
+            xaxis=dict(visible=False,range=[0,max(100,float(grouped['비중(%)'].max())*1.22)]),yaxis=dict(title=None))
         st.plotly_chart(bar,use_container_width=True,config=CHART_CONFIG)
         show_frame(grouped,hide_index=True,use_container_width=True)
         if col=='category':

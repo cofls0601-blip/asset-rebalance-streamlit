@@ -1,14 +1,12 @@
-모바일 UI 개선 (기준: main a39255e)
+디자인 시스템 개선 (기준 커밋: 645964e = 현재 main)
 
-바뀐 파일 2개 - 저장소의 같은 위치에 덮어쓰세요.
-  streamlit_app.py           차트 색상/여백 테마만 변경 (계산 로직 변경 없음)
-  streamlit_app/theme.css    모바일(800px 이하) 스타일
+방법 A) 파일을 저장소 같은 위치에 덮어쓰기 / 추가하기
+  streamlit_app.py              차트 설정을 ui.py 토큰에서 가져옴
+  streamlit_app/theme.css       토큰 기반으로 재정리 (모바일 블록 1개로 통합)
+  streamlit_app/ui.py           TOKENS / CHART_* 추가
+  docs/DESIGN_SYSTEM.md         (신규) 토큰·컴포넌트 문서
+  tests/test_design_tokens.py   (신규) CSS↔Python 토큰 동기화 테스트
 
-또는 git 으로 커밋째 적용:
-  git am patches/*.patch
+방법 B) git am patches/*.patch
 
-커밋
-  1) 모바일 입력칸·버튼·상단 바를 미리보기 디자인에 맞게 정리
-  2) 모바일 드롭다운 테두리·주문 필터 칩·차트 테마 정리
-
-검증: python -m unittest discover -s tests  -> 95 tests OK
+검증: python -m unittest discover -s tests -> 110 tests OK

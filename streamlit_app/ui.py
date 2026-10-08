@@ -19,10 +19,28 @@ PERCENT_COLUMNS = {
     '목표대비괴리(%p)', '괴리(%p)', '허용괴리(%p)', '증감률(%)',
 }
 
+# Python mirror of the design tokens in theme.css (:root). Keep the two in sync.
+TOKENS = {
+    'surface': '#fffdfa', 'ink': '#292d2a', 'muted': '#827d76', 'line': '#e8dfd5',
+    'accent': '#b95e3d', 'sage': '#477665', 'deep': '#263d33',
+    'under': '#276893', 'under_soft': '#e6f0f8',
+    'met': '#387762', 'met_soft': '#e3f0e9',
+    'over': '#ad5146', 'over_soft': '#fae8e3',
+}
+FONT_STACK = 'Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif'
+# Categorical chart palette: brand first, then semantic hues, then neutrals.
+CHART_COLORS = [TOKENS['accent'], TOKENS['sage'], TOKENS['under'], '#c9a227', '#8a6f9e', '#9aa39b', '#d68a6a']
+CHART_LAYOUT = dict(margin=dict(l=0, r=44, t=8, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                    font=dict(family=FONT_STACK, size=13, color=TOKENS['ink']), xaxis_title=None, yaxis_title=None,
+                    xaxis=dict(gridcolor=TOKENS['line'], zerolinecolor=TOKENS['line']),
+                    yaxis=dict(gridcolor=TOKENS['line'], zerolinecolor=TOKENS['line']),
+                    hoverlabel=dict(bgcolor=TOKENS['surface'], bordercolor=TOKENS['line'], font_family=FONT_STACK))
+CHART_CONFIG = {'displayModeBar': False, 'responsive': True}
+
 TARGET_STATUS_STYLES = {
-    '미달': ('#e6f0f8', '#276893'),
-    '충족': ('#e3f0e9', '#387762'),
-    '초과': ('#fae8e3', '#ad5146'),
+    '미달': (TOKENS['under_soft'], TOKENS['under']),
+    '충족': (TOKENS['met_soft'], TOKENS['met']),
+    '초과': (TOKENS['over_soft'], TOKENS['over']),
 }
 
 
@@ -94,11 +112,11 @@ def allocation_status_frame(plan, strategies):
 def style_allocation_rows(frame):
     """Apply calm, accessible status colors to allocation rows."""
     def row_style(row):
-        background, _ = TARGET_STATUS_STYLES.get(row.get('목표상태'), ('#fffdfa', '#292d2a'))
+        background, _ = TARGET_STATUS_STYLES.get(row.get('목표상태'), (TOKENS['surface'], TOKENS['ink']))
         return [f'background-color: {background}' for _ in row.index]
 
     def status_style(value):
-        background, foreground = TARGET_STATUS_STYLES.get(value, ('#fffdfa', '#292d2a'))
+        background, foreground = TARGET_STATUS_STYLES.get(value, (TOKENS['surface'], TOKENS['ink']))
         return f'background-color: {background}; color: {foreground}; font-weight: 750'
 
     styled = frame.style.apply(row_style, axis=1)

@@ -1,0 +1,674 @@
+From 6f5599a24298ba7c137edf2efa3e703e3ca15b77 Mon Sep 17 00:00:00 2001
+From: rebalance <a@b>
+Date: Wed, 7 Oct 2026 12:07:01 +0000
+Subject: [PATCH] =?UTF-8?q?design:=20=ED=86=A0=ED=81=B0=20=EA=B8=B0?=
+ =?UTF-8?q?=EB=B0=98=20=EB=94=94=EC=9E=90=EC=9D=B8=20=EC=8B=9C=EC=8A=A4?=
+ =?UTF-8?q?=ED=85=9C=20=EC=A0=95=EB=A6=AC=20(theme.css=20=ED=86=A0?=
+ =?UTF-8?q?=ED=81=B0=ED=99=94,=20Python=20=EB=AF=B8=EB=9F=AC,=20=EB=AC=B8?=
+ =?UTF-8?q?=EC=84=9C=C2=B7=EB=8F=99=EA=B8=B0=ED=99=94=20=ED=85=8C=EC=8A=A4?=
+ =?UTF-8?q?=ED=8A=B8)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ docs/DESIGN_SYSTEM.md       |  51 +++++
+ streamlit_app.py            |  14 +-
+ streamlit_app/theme.css     | 413 ++++++++++++++++++++----------------
+ streamlit_app/ui.py         |  28 ++-
+ tests/test_design_tokens.py |  31 +++
+ 5 files changed, 343 insertions(+), 194 deletions(-)
+ create mode 100644 docs/DESIGN_SYSTEM.md
+ create mode 100644 tests/test_design_tokens.py
+
+diff --git a/docs/DESIGN_SYSTEM.md b/docs/DESIGN_SYSTEM.md
+new file mode 100644
+index 0000000..7fc1950
+--- /dev/null
++++ b/docs/DESIGN_SYSTEM.md
+@@ -0,0 +1,51 @@
++# Rebalance 디자인 시스템
++
++모든 스타일은 `streamlit_app/theme.css` 하나에 있습니다. 맨 위 `:root` 토큰만 바꾸면 전 화면이 따라갑니다.
++차트·표 색처럼 Python에서 써야 하는 값은 `streamlit_app/ui.py`의 `TOKENS`에 같은 값으로 두고, `tests/test_design_tokens.py`가 두 곳이 어긋나면 실패합니다.
++
++## 색상
++| 토큰 | 값 | 용도 |
++|---|---|---|
++| `--bg` | #f5f2ee | 페이지 배경 |
++| `--surface` | #fffdfa | 카드·표·버튼 |
++| `--surface-sunk` | #efe9e1 | 세그먼트 트랙 |
++| `--field` | #ffffff | 입력칸 |
++| `--ink` / `--muted` / `--subtle` | #292d2a / #827d76 / #a39d94 | 본문 / 보조 / 흐림 |
++| `--line` / `--line-strong` | #e8dfd5 / #d9cdbf | 테두리 |
++| `--accent` (+`-strong`, `-soft`) | #b95e3d | 주 버튼·선택·포커스 |
++| `--deep` | #263d33 | 총자산 카드·규칙 미리보기 |
++| `--sage` | #477665 | 완료 단계 |
++| `--under` (+`-soft`, `-line`) | #276893 | 목표 미달 · 매수 |
++| `--met` (+`-soft`, `-line`) | #387762 | 충족 · 보유 유지 · THEN |
++| `--over` (+`-soft`, `-line`) | #ad5146 | 초과 · 매도 · ELSE · 차단 |
++| `--wait` (+`-soft`) | #72695f | 일정 대기 |
++
++의미 색은 화면마다 같은 뜻으로만 씁니다: 파랑 = 더 사야 함, 초록 = 괜찮음, 빨강 = 줄여야 함/문제.
++
++## 타이포·간격·모서리
++- 글꼴 `--font` (Pretendard 우선), 숫자는 항상 고정폭(tabular).
++- 크기 `--fs-2xs .7` · `xs .76` · `sm .84` · `md .92` · `lg 1.05` · `xl 1.3` · `2xl 1.9` rem.
++- 굵기 `--fw-medium 600` · `semibold 680` · `bold 760` · `heavy 800`.
++- 간격 `--sp-1..6` = 4 · 8 · 12 · 16 · 20 · 24px.
++- 모서리 `--r-sm 10` · `md 12` · `lg 14` · `xl 16` · `pill`.
++- 그림자 `--shadow-1`(선택된 세그먼트) · `--shadow-2`(모바일 상단 바) · `--shadow-accent`(주 버튼). 포커스는 `--focus-ring`.
++- 터치 `--tap 44px`, 모바일 버튼 `--tap-lg 50px`.
++
++## 컴포넌트 클래스
++| 클래스 | 화면 |
++|---|---|
++| `.target-chip.{under,met,over}`, `.decision-badge.{order,hold,wait}` | 상태 배지 (같은 모양) |
++| `.monthly-summary` · `.summary-hero` · `.summary-mini` | 이번 달 요약 |
++| `.order-list` · `.order-row` · `.order-side.{buy,sell}` | 주문안 |
++| `.asset-card.status-{under,met,over}` | 자산 현황 카드 |
++| `.rule-preview` (+`.signal .number .pass .fail`) | 전략실 규칙 문장 |
++| `.workflow-bar.{is-done,is-active}` | 진행 단계 |
++
++## 모바일 (≤ 800px)
++사이드바 대신 상단 바(`mobile_toolbar`), 데스크톱 표 대신 카드(`mobile_*` 키 컨테이너).
++입력칸은 흰 상자 + 16px 글자(iOS 확대 방지), 버튼은 전체 폭 50px.
++같은 미디어 쿼리를 여러 개 만들지 말고 파일 아래쪽 한 블록에 추가하세요.
++
++## 규칙
++- 새 색을 직접 쓰지 말고 토큰을 추가한 뒤 참조하세요.
++- `--warm-*`, `--terracotta*`, `--deep-green` 은 이전 이름입니다. 동작은 하지만 새 코드에서는 새 이름을 쓰세요.
+diff --git a/streamlit_app.py b/streamlit_app.py
+index 3276c9a..6d19bb2 100644
+--- a/streamlit_app.py
++++ b/streamlit_app.py
+@@ -29,7 +29,7 @@ import streamlit_app.ui as ui_helpers
+ # helper module during a multi-file deployment. Reload once when the newly
+ # deployed allocation helpers are not present so the app does not fail during
+ # that short-lived mixed-version state.
+-if not hasattr(ui_helpers, 'allocation_status_frame'):
++if not hasattr(ui_helpers, 'allocation_status_frame') or not hasattr(ui_helpers, 'CHART_LAYOUT'):
+     ui_helpers = importlib.reload(ui_helpers)
+ 
+ numeric_column_config = ui_helpers.numeric_column_config
+@@ -41,10 +41,9 @@ st.set_page_config(page_title='Rebalance · 자산배분', page_icon='◈', layo
+ st.markdown('<style>'+Path(__file__).with_name('streamlit_app').joinpath('theme.css').read_text(encoding='utf-8')+'</style>',unsafe_allow_html=True)
+ st.markdown('<meta name="color-scheme" content="light only">',unsafe_allow_html=True)
+ 
+-CHART_COLORS=['#b95e3d','#477665','#336f9a','#c9a227','#8a6f9e','#9aa39b','#d68a6a']
+-CHART_LAYOUT=dict(margin=dict(l=0,r=44,t=8,b=0),paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',
+-    font=dict(family='Pretendard, -apple-system, sans-serif',size=13,color='#292d2a'),xaxis_title=None,yaxis_title=None)
+-CHART_CONFIG={'displayModeBar':False,'responsive':True}
++CHART_COLORS=ui_helpers.CHART_COLORS
++CHART_LAYOUT=ui_helpers.CHART_LAYOUT
++CHART_CONFIG=ui_helpers.CHART_CONFIG
+ 
+ PAGE_DESCRIPTIONS={
+     '이번 달':'보유내역과 실제 종가를 확인하고 이번 평가의 주문안을 준비합니다.',
+@@ -689,8 +688,9 @@ elif page=='자산 현황':
+         bar=px.bar(grouped.sort_values('비중(%)'),x='비중(%)',y=col,orientation='h',color=col,text='비중(%)',
+             color_discrete_sequence=CHART_COLORS)
+         bar.update_traces(texttemplate='%{text:.1f}%',textposition='outside',cliponaxis=False,marker_line_width=0)
+-        bar.update_layout(**CHART_LAYOUT,showlegend=False,height=max(200,56*len(grouped)+40),
+-            xaxis=dict(visible=False,range=[0,max(100,float(grouped['비중(%)'].max())*1.18)]),yaxis=dict(title=None),bargap=.38)
++        bar.update_layout(**CHART_LAYOUT)
++        bar.update_layout(showlegend=False,height=max(200,56*len(grouped)+40),bargap=.38,
++            xaxis=dict(visible=False,range=[0,max(100,float(grouped['비중(%)'].max())*1.22)]),yaxis=dict(title=None))
+         st.plotly_chart(bar,use_container_width=True,config=CHART_CONFIG)
+         show_frame(grouped,hide_index=True,use_container_width=True)
+         if col=='category':
+diff --git a/streamlit_app/theme.css b/streamlit_app/theme.css
+index b0e4ce4..69668a7 100644
+--- a/streamlit_app/theme.css
++++ b/streamlit_app/theme.css
+@@ -1,229 +1,278 @@
++/* =====================================================================
++   Rebalance design system — tokens first, components second.
++   Change a value here and every screen follows. Python mirrors the few
++   colors it needs (charts, table rows) in streamlit_app/ui.py → TOKENS.
++   ===================================================================== */
+ :root {
+   color-scheme: light;
+-  --warm-bg: #f5f2ee;
+-  --warm-surface: #fffdfa;
+-  --warm-ink: #292d2a;
+-  --warm-muted: #827d76;
+-  --warm-border: #e8dfd5;
+-  --terracotta: #b95e3d;
+-  --terracotta-dark: #91442d;
+-  --terracotta-soft: #f5e7de;
+-  --sage: #477665;
+-  --deep-green: #263d33;
+-  --terminal-info: #336f9a;
+-  --terminal-red: #b34f43;
+-}
+-html, body, .stApp {
+-  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+-  line-height: 1.48;
+-  color: var(--warm-ink);
++  /* surfaces */
++  --bg: #f5f2ee;          --surface: #fffdfa;     --surface-sunk: #efe9e1;
++  --field: #ffffff;       --sidebar: #eeeae4;     --toolbar: #faf7f3;
++  /* ink */
++  --ink: #292d2a;         --muted: #827d76;       --subtle: #a39d94;
++  --line: #e8dfd5;        --line-strong: #d9cdbf;
++  /* brand */
++  --accent: #b95e3d;      --accent-strong: #91442d; --accent-soft: #f5e7de;
++  --sage: #477665;        --deep: #263d33;         --deep-ink: #f3f5f0; --deep-muted: #aebfb4;
++  /* semantic: target status (미달 / 충족 / 초과) — also used for 매수 / 매도 */
++  --under: #276893;       --under-soft: #e6f0f8;   --under-line: #5b9dc9;
++  --met: #387762;         --met-soft: #e3f0e9;     --met-line: #75af8d;
++  --over: #ad5146;        --over-soft: #fae8e3;    --over-line: #d67969;
++  --wait: #72695f;        --wait-soft: #eee9e1;
++  /* rule preview on deep surface */
++  --code-signal: #f2aa7d; --code-number: #9bd1ee;  --code-pass: #9de0b9; --code-fail: #f6aaa0;
++
++  /* type scale (rem @16px) */
++  --fs-2xs: .7rem; --fs-xs: .76rem; --fs-sm: .84rem; --fs-md: .92rem; --fs-lg: 1.05rem;
++  --fs-xl: 1.3rem; --fs-2xl: 1.9rem;
++  --fw-medium: 600; --fw-semibold: 680; --fw-bold: 760; --fw-heavy: 800;
++  --tracking-caps: .13em;
++  --font: Pretendard, "Pretendard Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
++  /* spacing (4px grid) */
++  --sp-1: .25rem; --sp-2: .5rem; --sp-3: .75rem; --sp-4: 1rem; --sp-5: 1.25rem; --sp-6: 1.5rem;
++  /* radius */
++  --r-sm: 10px; --r-md: 12px; --r-lg: 14px; --r-xl: 16px; --r-pill: 999px;
++  /* elevation */
++  --shadow-1: 0 1px 2px rgba(41,45,42,.06);
++  --shadow-2: 0 6px 18px -14px rgba(38,61,51,.45);
++  --shadow-accent: 0 8px 18px -10px var(--accent);
++  --focus-ring: 0 0 0 3px var(--accent-soft);
++  /* touch */
++  --tap: 44px; --tap-lg: 50px;
++
++  /* legacy aliases (kept so older markup keeps working) */
++  --warm-bg: var(--bg); --warm-surface: var(--surface); --warm-ink: var(--ink); --warm-muted: var(--muted);
++  --warm-border: var(--line); --terracotta: var(--accent); --terracotta-dark: var(--accent-strong);
++  --terracotta-soft: var(--accent-soft); --deep-green: var(--deep); --terminal-info: var(--under); --terminal-red: var(--over);
+ }
++
++/* ---------- base ---------- */
++html, body, .stApp { font-family: var(--font); line-height: 1.48; color: var(--ink); font-feature-settings: "tnum"; }
+ .material-symbols-rounded, .material-symbols-outlined, .material-icons, [data-testid="stIconMaterial"] {
+   font-family: "Material Symbols Rounded", "Material Icons" !important;
+-  font-weight: normal !important;
+-  font-style: normal !important;
+-  line-height: 1 !important;
+-  letter-spacing: normal !important;
+-  text-transform: none !important;
+-  white-space: nowrap !important;
++  font-weight: normal !important; font-style: normal !important; line-height: 1 !important;
++  letter-spacing: normal !important; text-transform: none !important; white-space: nowrap !important;
+   font-feature-settings: "liga" !important;
+ }
+-[data-testid="stAppViewContainer"] { background: var(--warm-bg); color: var(--warm-ink); }
+-[data-testid="stHeader"] { background: color-mix(in srgb, var(--warm-bg) 94%, transparent); }
++[data-testid="stAppViewContainer"] { background: var(--bg); color: var(--ink); }
++[data-testid="stHeader"] { background: color-mix(in srgb, var(--bg) 94%, transparent); }
+ .block-container { max-width: 1320px; padding: 1.6rem 2rem 4rem; }
+ h1 { font-size: clamp(2rem, 2.5vw, 2.45rem) !important; letter-spacing: -.045em !important; line-height: 1.22 !important; margin-bottom: .45rem !important; }
+-h2 { font-size: 1.32rem !important; letter-spacing: -.025em !important; margin-top: 1.55rem !important; }
++h2 { font-size: var(--fs-xl) !important; letter-spacing: -.025em !important; margin-top: 1.55rem !important; }
+ h3 { font-size: 1.13rem !important; }
+ p, li { line-height: 1.55; }
+-[data-testid="stCaptionContainer"] p { color: var(--warm-muted) !important; font-size: .86rem !important; }
+-[data-testid="stWidgetLabel"] p { color: var(--warm-ink); font-size: .89rem !important; font-weight: 650 !important; }
+-[data-testid="stMetric"] { padding: .9rem 1rem; border: 1px solid var(--warm-border); border-radius: 13px; background: var(--warm-surface); }
+-[data-testid="stMetricValue"] { font-variant-numeric: tabular-nums; font-size: 1.5rem !important; color: var(--warm-ink); }
+-[data-testid="stMetricLabel"] p { color: var(--warm-muted) !important; font-size: .82rem !important; }
+-[data-testid="stSidebar"] { background: #eeeae4; border-right: 1px solid var(--warm-border); }
+-[data-testid="stSidebar"] [role="radiogroup"] label { min-height: 44px; border-radius: 10px; padding: .35rem .55rem; }
+-[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background: var(--terracotta-soft); color: var(--terracotta-dark); }
+-.terminal-brand { display: flex; align-items: center; gap: .55rem; padding: .15rem 0 .5rem; }
+-.terminal-brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: var(--terracotta); color: #fff; font-weight: 800; }
+-.terminal-brand-name { font-weight: 800; letter-spacing: .08em; font-size: .86rem; color: var(--deep-green); }
+-.terminal-brand-sub { font-size: .7rem; letter-spacing: .08em; font-weight: 650; color: var(--warm-muted); }
+-.terminal-status { display: flex; gap: .45rem 1rem; flex-wrap: wrap; margin: 0 0 1.2rem; padding: .65rem .85rem; border: 1px solid var(--warm-border); border-radius: 12px; background: var(--warm-surface); color: var(--warm-muted); font-size: .8rem; }
+-.terminal-status b { color: var(--warm-ink); }
+-.terminal-status .ready { color: var(--sage); }.terminal-status .waiting { color: var(--terracotta); }.terminal-status .blocked { color: var(--terminal-red); }
+-.stButton > button, .stDownloadButton > button, [data-testid="stFormSubmitButton"] > button { min-height: 44px; border-radius: 11px; border-color: var(--warm-border); color: var(--warm-ink); background: var(--warm-surface); font-size: .91rem !important; font-weight: 650 !important; }
+-.stButton > button[kind="primary"], [data-testid="stFormSubmitButton"] > button[kind="primary"] { background: var(--terracotta); border-color: var(--terracotta); color: #fff; }
+-.stButton > button:hover, .stDownloadButton > button:hover { border-color: var(--terracotta); color: var(--terracotta-dark); }
+-.stButton > button[kind="primary"]:hover, [data-testid="stFormSubmitButton"] > button[kind="primary"]:hover { background: var(--terracotta-dark); color: #fff; }
+-[data-baseweb="input"] input, [data-baseweb="select"] * { font-size: .92rem !important; font-variant-numeric: tabular-nums; }
+-[data-baseweb="input"], [data-baseweb="select"], [data-baseweb="textarea"] { border-radius: 11px !important; }
+-[data-baseweb="tab-list"] button { min-height: 44px; }
+-[data-testid="stExpander"] { background: var(--warm-surface); border: 1px solid var(--warm-border); border-radius: 14px; }
++[data-testid="stCaptionContainer"] p { color: var(--muted) !important; font-size: var(--fs-sm) !important; }
++[data-testid="stWidgetLabel"] p { color: var(--ink); font-size: .89rem !important; font-weight: var(--fw-medium) !important; }
++.eyebrow { color: var(--accent); font-size: .72rem; font-weight: var(--fw-heavy); letter-spacing: var(--tracking-caps); margin: .45rem 0 .15rem; }
++.page-description { color: var(--muted); font-size: .96rem; margin: 0 0 1.2rem; line-height: 1.55; }
++
++/* ---------- Streamlit primitives ---------- */
++[data-testid="stMetric"] { padding: .9rem var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
++[data-testid="stMetricValue"] { font-variant-numeric: tabular-nums; font-size: 1.5rem !important; color: var(--ink); }
++[data-testid="stMetricLabel"] p { color: var(--muted) !important; font-size: .82rem !important; }
++.stButton > button, .stDownloadButton > button, [data-testid="stFormSubmitButton"] > button {
++  min-height: var(--tap); border-radius: var(--r-md); border-color: var(--line); color: var(--ink); background: var(--surface);
++  font-size: .91rem !important; font-weight: var(--fw-medium) !important; transition: border-color .15s, color .15s, background .15s, transform .08s; }
++.stButton > button:hover, .stDownloadButton > button:hover { border-color: var(--accent); color: var(--accent-strong); }
++.stButton > button:focus-visible, .stDownloadButton > button:focus-visible { box-shadow: var(--focus-ring); }
++.stButton > button[kind="primary"], [data-testid="stFormSubmitButton"] > button[kind="primary"],
++[data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] { background: var(--accent); border-color: var(--accent); color: #fff; }
++.stButton > button[kind="primary"]:hover, [data-testid="stFormSubmitButton"] > button[kind="primary"]:hover { background: var(--accent-strong); color: #fff; }
++.stButton button:disabled { opacity: .5; }
++[data-baseweb="input"] input, [data-baseweb="select"] * { font-size: var(--fs-md) !important; font-variant-numeric: tabular-nums; }
++[data-baseweb="input"], [data-baseweb="select"], [data-baseweb="textarea"] { border-radius: var(--r-sm) !important; }
++[data-baseweb="tab-list"] button { min-height: var(--tap); }
++[data-testid="stExpander"] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+ [data-testid="stExpander"] summary p { font-size: .99rem !important; font-weight: 720 !important; }
+-[data-testid="stAlert"] { border-radius: 12px; }
+-.eyebrow { color: var(--terracotta); font-size: .72rem; font-weight: 800; letter-spacing: .13em; margin: .45rem 0 .15rem; }
+-.page-description { color: var(--warm-muted); font-size: .96rem; margin: 0 0 1.2rem; line-height: 1.55; }
++[data-testid="stAlert"] { border-radius: var(--r-md); }
++[data-testid="stDataFrame"], [data-testid="stDataEditor"] { border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
++[data-testid="stPlotlyChart"] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: .5rem .6rem .2rem; }
++
++/* ---------- sidebar & brand ---------- */
++[data-testid="stSidebar"] { background: var(--sidebar); border-right: 1px solid var(--line); }
++[data-testid="stSidebar"] [role="radiogroup"] label { min-height: var(--tap); border-radius: var(--r-sm); padding: .35rem .55rem; }
++[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background: var(--accent-soft); color: var(--accent-strong); }
++.terminal-brand { display: flex; align-items: center; gap: .55rem; padding: .15rem 0 .5rem; }
++.terminal-brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: var(--accent); color: #fff; font-weight: var(--fw-heavy); }
++.terminal-brand-name { font-weight: var(--fw-heavy); letter-spacing: .08em; font-size: .86rem; color: var(--deep); }
++.terminal-brand-sub { font-size: var(--fs-2xs); letter-spacing: .08em; font-weight: var(--fw-medium); color: var(--muted); }
++.terminal-status { display: flex; gap: .45rem 1rem; flex-wrap: wrap; margin: 0 0 1.2rem; padding: .65rem .85rem; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); font-size: .8rem; }
++.terminal-status b { color: var(--ink); }
++.terminal-status .ready { color: var(--sage); } .terminal-status .waiting { color: var(--accent); } .terminal-status .blocked { color: var(--over); }
++
++/* ---------- workflow tracker ---------- */
+ .workflow { margin: .5rem 0 1.2rem; }
+ .workflow-bars { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; margin-bottom: .35rem; }
+-.workflow-bar { height: 4px; border-radius: 5px; background: #e5dbd0; }
+-.workflow-bar.is-done { background: var(--sage); }.workflow-bar.is-active { background: var(--terracotta); }
+-.workflow-meta { display: flex; justify-content: space-between; gap: .5rem; color: var(--warm-muted); font-size: .78rem; }
+-.workflow-meta strong { color: var(--warm-ink); font-weight: 750; }
++.workflow-bar { height: 4px; border-radius: 5px; background: var(--line-strong); }
++.workflow-bar.is-done { background: var(--sage); } .workflow-bar.is-active { background: var(--accent); }
++.workflow-meta { display: flex; justify-content: space-between; gap: .5rem; color: var(--muted); font-size: .78rem; }
++.workflow-meta strong { color: var(--ink); font-weight: 750; }
++
++/* ---------- status chips & badges (one vocabulary) ---------- */
+ .target-legend { display: flex; flex-wrap: wrap; gap: .4rem; margin: .25rem 0 .8rem; }
+-.target-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .28rem .56rem; border-radius: 999px; font-size: .77rem; font-weight: 760; }
+-.target-chip.under { background: #e6f0f8; color: #276893; }.target-chip.met { background: #e3f0e9; color: #387762; }.target-chip.over { background: #fae8e3; color: #ad5146; }
++.target-chip, .decision-badge { display: inline-flex; align-items: center; gap: .25rem; padding: .24rem .56rem; border-radius: var(--r-pill); font-size: var(--fs-xs); font-weight: var(--fw-bold); }
++.decision-badge { margin-right: .35rem; }
++.target-chip.under { background: var(--under-soft); color: var(--under); }
++.target-chip.met, .decision-badge.hold { background: var(--met-soft); color: var(--met); }
++.target-chip.over { background: var(--over-soft); color: var(--over); }
++.decision-badge.order { background: var(--accent-soft); color: var(--accent-strong); }
++.decision-badge.wait { background: var(--wait-soft); color: var(--wait); }
++
++/* ---------- 이번 달: summary, holdings, decisions ---------- */
+ .st-key-mobile_toolbar, .st-key-mobile_monthly_allocation_status, .st-key-mobile_order_allocation_status, .st-key-mobile_holdings_editor, .st-key-mobile_monthly_summary { display: none; }
+ .monthly-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: .55rem; margin: .6rem 0 1rem; }
+-.summary-hero { grid-column: 1/-1; padding: 1rem 1.05rem; border-radius: 14px; background: var(--deep-green); color: #fff; }
+-.summary-hero span, .summary-mini span { display: block; font-size: .76rem; font-weight: 650; }
+-.summary-hero strong { display: block; font-size: 1.9rem; line-height: 1.25; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
+-.summary-hero small { color: #c4d3ca; font-size: .73rem; }
+-.summary-mini { min-width: 0; padding: .68rem .75rem; border: 1px solid var(--warm-border); border-radius: 12px; background: var(--warm-surface); }
+-.summary-mini span { color: var(--warm-muted); }.summary-mini strong { display: block; font-size: 1.15rem; line-height: 1.3; font-variant-numeric: tabular-nums; white-space: nowrap; }
++.summary-hero { grid-column: 1/-1; padding: var(--sp-4) 1.05rem; border-radius: var(--r-lg); background: var(--deep); color: #fff; }
++.summary-hero span, .summary-mini span { display: block; font-size: var(--fs-xs); font-weight: var(--fw-medium); }
++.summary-hero strong { display: block; font-size: var(--fs-2xl); line-height: 1.25; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
++.summary-hero small { color: var(--deep-muted); font-size: .73rem; }
++.summary-mini { min-width: 0; padding: .68rem .75rem; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
++.summary-mini span { color: var(--muted); }
++.summary-mini strong { display: block; font-size: 1.15rem; line-height: 1.3; font-variant-numeric: tabular-nums; white-space: nowrap; }
+ .st-key-mobile_holdings_editor [data-testid="stForm"] { border: 0; padding: 0; }
+ [class*="st-key-holding_item_"] { margin: .55rem 0; }
+ .holding-head { display: flex; justify-content: space-between; gap: .5rem; align-items: baseline; font-size: .81rem; margin: .55rem 0 .22rem; }
+-.holding-head strong { font-size: .86rem; overflow-wrap: anywhere; }.holding-head span { color: var(--warm-muted); white-space: nowrap; }
+-[class*="st-key-decision_card_"] { background: var(--warm-surface); border: 1px solid var(--warm-border) !important; border-radius: 14px !important; padding: .85rem !important; margin-bottom: .6rem; }
++.holding-head strong { font-size: .86rem; overflow-wrap: anywhere; } .holding-head span { color: var(--muted); white-space: nowrap; }
++[class*="st-key-decision_card_"] { background: var(--surface); border: 1px solid var(--line) !important; border-radius: var(--r-lg) !important; padding: .85rem !important; margin-bottom: .6rem; }
+ .decision-top { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; font-variant-numeric: tabular-nums; }
+-.decision-top strong { font-weight: 770; }.decision-top b { white-space: nowrap; font-size: .96rem; }
+-.decision-note { color: var(--warm-muted); font-size: .82rem; margin-top: .3rem; line-height: 1.5; overflow-wrap: anywhere; }
+-.decision-badge { display: inline-flex; align-items: center; padding: .22rem .48rem; margin-right: .35rem; border-radius: 999px; font-size: .73rem; font-weight: 750; }
+-.decision-badge.order { background: var(--terracotta-soft); color: var(--terracotta-dark); }
+-.decision-badge.hold { background: #e3f0e9; color: #387762; }
+-.decision-badge.wait { background: #eee9e1; color: #72695f; }
++.decision-top strong { font-weight: 770; } .decision-top b { white-space: nowrap; font-size: .96rem; }
++.decision-note { color: var(--muted); font-size: .82rem; margin-top: .3rem; line-height: 1.5; overflow-wrap: anywhere; }
++
++/* ---------- chip radios (filters, edit mode) ---------- */
+ .st-key-order_target_filter [role="radiogroup"], .st-key-holdings_edit_mode [role="radiogroup"] { gap: .35rem; flex-wrap: wrap; }
+-.st-key-order_target_filter [role="radiogroup"] label, .st-key-holdings_edit_mode [role="radiogroup"] label { min-height: 44px; padding: .35rem .65rem; margin: 0; border: 1px solid var(--warm-border); border-radius: 999px; background: var(--warm-surface); }
+-.st-key-order_target_filter [role="radiogroup"] label:has(input:checked), .st-key-holdings_edit_mode [role="radiogroup"] label:has(input:checked) { border-color: var(--terracotta); background: var(--terracotta-soft); }
+-.st-key-order_target_filter [role="radiogroup"] label:nth-child(2) { color: #276893; }
+-.st-key-order_target_filter [role="radiogroup"] label:nth-child(3) { color: #387762; }
+-.st-key-order_target_filter [role="radiogroup"] label:nth-child(4) { color: #ad5146; }
+-[class*="st-key-builder_connector_"] { margin: -.25rem 0; padding: .1rem .7rem .3rem; border-left: 2px solid var(--warm-border); }
+-.order-list { border: 1px solid var(--warm-border); border-radius: 14px; overflow: hidden; background: var(--warm-surface); margin: .45rem 0 .7rem; }
+-.order-row { display: flex; align-items: center; gap: .6rem; padding: .7rem .75rem; border-bottom: 1px solid var(--warm-border); }
+-.order-row:last-child { border-bottom: 0; }.order-side { flex: 0 0 auto; border-radius: 11px; padding: .42rem .5rem; font-size: .76rem; font-weight: 800; }
+-.order-side.buy { background: #e4eef7; color: #2b6896; }.order-side.sell { background: #f8e6df; color: #ac5345; }
+-.order-name { min-width: 0; flex: 1; }.order-name strong { display: block; font-size: .86rem; line-height: 1.35; overflow-wrap: anywhere; }
+-.order-name small { display: block; color: var(--warm-muted); font-size: .71rem; margin-top: .18rem; }
+-.order-amount { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; }.order-amount strong { display: block; font-size: .9rem; }.order-amount small { color: var(--warm-muted); font-size: .72rem; }
+-.cash-forecast { padding: .8rem .9rem; border: 1px solid var(--warm-border); border-radius: 13px; background: var(--warm-surface); display: flex; justify-content: space-between; align-items: center; gap: .5rem; font-size: .82rem; }
++.st-key-order_target_filter [role="radiogroup"] label, .st-key-holdings_edit_mode [role="radiogroup"] label { min-height: var(--tap); padding: .35rem .7rem; margin: 0; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); }
++.st-key-order_target_filter [role="radiogroup"] label:has(input:checked), .st-key-holdings_edit_mode [role="radiogroup"] label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
++.st-key-order_target_filter [role="radiogroup"] label:nth-child(2) { color: var(--under); }
++.st-key-order_target_filter [role="radiogroup"] label:nth-child(3) { color: var(--met); }
++.st-key-order_target_filter [role="radiogroup"] label:nth-child(4) { color: var(--over); }
++.st-key-order_target_filter [role="radiogroup"] label p { white-space: nowrap !important; }
++
++/* ---------- 주문안: order list, cash ---------- */
++.order-list { border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); margin: .45rem 0 .7rem; }
++.order-row { display: flex; align-items: center; gap: .6rem; padding: .7rem .75rem; border-bottom: 1px solid var(--line); }
++.order-row:last-child { border-bottom: 0; }
++.order-side { flex: 0 0 auto; border-radius: var(--r-sm); padding: .42rem .5rem; font-size: var(--fs-xs); font-weight: var(--fw-heavy); }
++.order-side.buy { background: var(--under-soft); color: var(--under); } .order-side.sell { background: var(--over-soft); color: var(--over); }
++.order-name { min-width: 0; flex: 1; } .order-name strong { display: block; font-size: .86rem; line-height: 1.35; overflow-wrap: anywhere; }
++.order-name small { display: block; color: var(--muted); font-size: .71rem; margin-top: .18rem; }
++.order-amount { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; } .order-amount strong { display: block; font-size: .9rem; } .order-amount small { color: var(--muted); font-size: .72rem; }
++.cash-forecast { padding: .8rem .9rem; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); display: flex; justify-content: space-between; align-items: center; gap: .5rem; font-size: .82rem; }
+ .cash-forecast strong { font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
++
++/* ---------- 자산 현황: asset cards ---------- */
+ .asset-card-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: .6rem; margin: .5rem 0 1rem; }
+-.asset-card { border: 1px solid var(--warm-border); border-left: 4px solid var(--sage); border-radius: 13px; background: var(--warm-surface); padding: .85rem; min-width: 0; }
+-.asset-card.status-under { border-left-color: #5b9dc9; }.asset-card.status-over { border-left-color: #d67969; }.asset-card.status-met { border-left-color: #75af8d; }
++.asset-card { border: 1px solid var(--line); border-left: 4px solid var(--sage); border-radius: var(--r-md); background: var(--surface); padding: .85rem; min-width: 0; }
++.asset-card.status-under { border-left-color: var(--under-line); } .asset-card.status-over { border-left-color: var(--over-line); } .asset-card.status-met { border-left-color: var(--met-line); }
+ .asset-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+-.asset-card-name { font-weight: 750; font-size: .92rem; overflow-wrap: anywhere; }.asset-card-meta { color: var(--warm-muted); font-size: .76rem; margin: .2rem 0 .5rem; }
++.asset-card-name { font-weight: 750; font-size: var(--fs-md); overflow-wrap: anywhere; } .asset-card-meta { color: var(--muted); font-size: var(--fs-xs); margin: .2rem 0 .5rem; }
+ .asset-card-weights { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .5rem; margin: .5rem 0; }
+-.asset-card-weights span { display: block; color: var(--warm-muted); font-size: .73rem; }.asset-card-weights strong { font-variant-numeric: tabular-nums; font-size: 1rem; }
+-.asset-card-arrow { color: var(--warm-muted); }.asset-card-order { display: flex; justify-content: space-between; gap: .5rem; border-top: 1px solid var(--warm-border); padding-top: .6rem; font-size: .81rem; }
+-.asset-card-gap { color: var(--warm-muted); font-size: .8rem; font-weight: 700; }.status-under .asset-card-gap { color: #276893; }.status-over .asset-card-gap { color: #ad5146; }.status-met .asset-card-gap { color: #387762; }
+-.st-key-builder_toolbar, .st-key-builder_condition_area, .st-key-builder_action_area { border: 1px solid var(--warm-border); background: var(--warm-surface); border-radius: 14px; padding: 1rem; }
+-[class*="st-key-builder_condition_"] { border-color: var(--warm-border) !important; background: var(--warm-surface); border-radius: 14px !important; }
+-.st-key-builder_then { border-left: 3px solid #4c9473 !important; background: var(--warm-surface); }.st-key-builder_else { border-left: 3px solid #c26956 !important; background: var(--warm-surface); }
+-.builder-section { font-size: .77rem; font-weight: 750; letter-spacing: .06em; color: var(--warm-muted); margin-bottom: .5rem; }
+-.builder-section .then { color: #3c8563; }.builder-section .else { color: #af5347; }
+-.rule-preview { border-radius: 14px; background: var(--deep-green); color: #f3f5f0; padding: 1rem; font-size: .86rem; line-height: 1.8; overflow-wrap: anywhere; }
+-.rule-preview-label { color: #aebfb4; font-size: .73rem; font-weight: 750; letter-spacing: .06em; margin-bottom: .45rem; }
+-.rule-preview .signal { color: #f2aa7d; }.rule-preview .number { color: #9bd1ee; }.rule-preview .pass { color: #9de0b9; }.rule-preview .fail { color: #f6aaa0; }
+-.rule-preview .branch { font-size: .77rem; font-weight: 750; margin-right: .3rem; }
++.asset-card-weights span { display: block; color: var(--muted); font-size: .73rem; } .asset-card-weights strong { font-variant-numeric: tabular-nums; font-size: 1rem; }
++.asset-card-arrow { color: var(--muted); }
++.asset-card-order { display: flex; justify-content: space-between; gap: .5rem; border-top: 1px solid var(--line); padding-top: .6rem; font-size: .81rem; }
++.asset-card-gap { color: var(--muted); font-size: .8rem; font-weight: 700; }
++.status-under .asset-card-gap { color: var(--under); } .status-over .asset-card-gap { color: var(--over); } .status-met .asset-card-gap { color: var(--met); }
++
++/* ---------- 전략실: rule builder ---------- */
++.st-key-builder_toolbar, .st-key-builder_condition_area, .st-key-builder_action_area { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-lg); padding: var(--sp-4); }
++[class*="st-key-builder_condition_"] { border-color: var(--line) !important; background: var(--surface); border-radius: var(--r-lg) !important; }
++[class*="st-key-builder_connector_"] { margin: -.25rem 0; padding: .1rem .7rem .3rem; border-left: 2px solid var(--line); }
++.st-key-builder_then { border-left: 3px solid var(--met-line) !important; background: var(--surface); }
++.st-key-builder_else { border-left: 3px solid var(--over-line) !important; background: var(--surface); }
++.builder-section { font-size: var(--fs-xs); font-weight: 750; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; }
++.builder-section .then { color: var(--met); } .builder-section .else { color: var(--over); }
++.rule-preview { border-radius: var(--r-lg); background: var(--deep); color: var(--deep-ink); padding: var(--sp-4); font-size: .86rem; line-height: 1.8; overflow-wrap: anywhere; }
++.rule-preview-label { color: var(--deep-muted); font-size: .73rem; font-weight: 750; letter-spacing: .06em; margin-bottom: .45rem; }
++.rule-preview .signal { color: var(--code-signal); } .rule-preview .number { color: var(--code-number); }
++.rule-preview .pass { color: var(--code-pass); } .rule-preview .fail { color: var(--code-fail); }
++.rule-preview .branch { font-size: var(--fs-xs); font-weight: 750; margin-right: .3rem; }
++
++/* =====================================================================
++   Mobile (≤ 800px) — one block. Phone bar replaces sidebar; fields and
++   buttons grow to thumb size; desktop tables give way to card lists.
++   ===================================================================== */
+ @media (max-width: 800px) {
+-  [data-testid="stHeader"] { display: none; }
+-  [data-testid="stSidebar"] { display: none; }
+-  .block-container { padding: 0 .85rem calc(3rem + env(safe-area-inset-bottom)); }
+-  .st-key-mobile_toolbar { display: block; position: sticky; top: 0; z-index: 90; margin: 0 -.85rem .85rem; padding: .55rem .85rem .7rem; background: #faf7f3; border-bottom: 1px solid var(--warm-border); }
+-  .st-key-mobile_toolbar [data-testid="stVerticalBlock"] { gap: .35rem; }
+-  .mobile-brand { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0 0 .1rem; }
+-  .mobile-brand strong { color: var(--deep-green); font-size: .76rem; letter-spacing: .13em; }
+-  .mobile-brand strong span { color: var(--terracotta); }.mobile-brand em { font-style: normal; font-size: .67rem; color: var(--terracotta-dark); background: var(--terracotta-soft); border-radius: 999px; padding: .2rem .5rem; }
+-  .st-key-mobile_toolbar [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: .45rem !important; }
+-  .st-key-mobile_toolbar [data-testid="column"], .st-key-mobile_toolbar [data-testid="stColumn"] { min-width: 0 !important; flex: 1 1 0 !important; width: 0 !important; }
+-  .st-key-mobile_toolbar [data-testid="column"]:first-child, .st-key-mobile_toolbar [data-testid="stColumn"]:first-child { flex-grow: 1.25 !important; }
+-  .st-key-mobile_toolbar [data-baseweb="select"], .st-key-mobile_toolbar [data-baseweb="input"] { min-height: 44px; }
+-  .st-key-mobile_toolbar [data-testid="stWidgetLabel"] p { font-size: .7rem !important; color: var(--warm-muted); }
++  [data-testid="stHeader"], [data-testid="stSidebar"], .terminal-status { display: none; }
++  .block-container { padding: .6rem .9rem calc(3.5rem + env(safe-area-inset-bottom)); }
+   .st-key-mobile_monthly_allocation_status, .st-key-mobile_order_allocation_status, .st-key-mobile_holdings_editor, .st-key-mobile_monthly_summary { display: block; }
+   .st-key-desktop_monthly_allocation_status, .st-key-desktop_order_allocation_status, .st-key-desktop_holdings_editor, .st-key-desktop_monthly_metrics { display: none; }
+-  .terminal-status { display: none; }
+-  .eyebrow { font-size: .67rem; margin-top: .25rem; }
++
++  /* type */
++  .eyebrow { font-size: .67rem; margin-top: 0; }
+   h1 { font-size: 1.72rem !important; }
+   h2 { font-size: 1.09rem !important; margin-top: 1.2rem !important; }
+   .page-description { font-size: .82rem; margin-bottom: 1.1rem; }
+-  [data-baseweb="tab-list"] { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+-  [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
+-  .asset-card-list { grid-template-columns: 1fr; }
+-}
+-@media (max-width: 460px) {
+-  .summary-hero strong { font-size: 1.72rem; }
+-  .summary-mini strong { font-size: 1.04rem; }
+-  .order-row { gap: .45rem; padding: .65rem .6rem; }
+-  .order-amount strong { font-size: .84rem; }
+-  .stButton button, .stDownloadButton button, [data-testid="stFormSubmitButton"] button { width: 100%; }
+-}
++  [data-testid="stCaptionContainer"] p { font-size: .82rem !important; }
+ 
+-/* ---- mobile polish: match preview design ---- */
+-@media (max-width: 800px) {
+-  .block-container { padding: .6rem .9rem calc(3.5rem + env(safe-area-inset-bottom)); }
+-  .st-key-mobile_toolbar { margin: 0 0 1rem; padding: .7rem .8rem .75rem; border: 1px solid var(--warm-border); border-radius: 16px;
+-    background: color-mix(in srgb, var(--warm-surface) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+-    box-shadow: 0 6px 18px -14px rgba(38,61,51,.45); }
++  /* phone toolbar */
++  .st-key-mobile_toolbar { display: block; position: sticky; top: 0; z-index: 90; margin: 0 0 var(--sp-4); padding: .7rem .8rem .75rem;
++    border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--shadow-2);
++    background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+   .st-key-mobile_toolbar [data-testid="stVerticalBlock"] { gap: .5rem; }
+-  .mobile-brand { margin: 0 0 .15rem; line-height: 1.2; }
+   .st-key-mobile_toolbar [data-testid="stWidgetLabel"] { display: none; }
+-  .st-key-mobile_toolbar div[data-baseweb="select"], .st-key-mobile_toolbar [data-testid="stDateInputField"] { min-height: 44px; background: var(--warm-bg) !important; border: 1px solid var(--warm-border) !important; border-radius: 12px !important; }
+-  .st-key-mobile_toolbar [data-baseweb="select"] * , .st-key-mobile_toolbar [data-baseweb="input"] input { font-size: 15px !important; font-weight: 650 !important; }
+-  .st-key-mobile_toolbar [data-testid="stPopover"] button { min-height: 36px !important; border-radius: 10px; font-size: .8rem !important; color: var(--warm-muted); background: transparent; border-style: dashed; }
+-  .eyebrow { margin-top: 0; }
+-  /* visible, thumb-sized fields; 16px avoids iOS zoom */
+-  [data-testid="stTextInputRootElement"], .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div, [data-baseweb="textarea"], [data-testid="stNumberInputContainer"] {
+-    min-height: 46px; background: #fff !important; border: 1px solid var(--warm-border) !important; border-radius: 12px !important; }
+-  [data-testid="stTextInputRootElement"]:focus-within, [data-testid="stNumberInputContainer"]:focus-within, [data-baseweb="select"] > div:focus-within { border-color: var(--terracotta) !important; box-shadow: 0 0 0 3px var(--terracotta-soft); }
++  .st-key-mobile_toolbar .stMarkdown, .st-key-mobile_toolbar .stElementContainer:has(.mobile-brand) { height: auto !important; min-height: 22px; overflow: visible; }
++  .mobile-brand { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0 0 .15rem; line-height: 1.2; }
++  .mobile-brand strong { color: var(--deep); font-size: var(--fs-xs); letter-spacing: var(--tracking-caps); }
++  .mobile-brand strong span { color: var(--accent); }
++  .mobile-brand em { font-style: normal; font-size: .67rem; color: var(--accent-strong); background: var(--accent-soft); border-radius: var(--r-pill); padding: .2rem .5rem; }
++  .st-key-mobile_toolbar [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: .45rem !important; }
++  .st-key-mobile_toolbar [data-testid="column"], .st-key-mobile_toolbar [data-testid="stColumn"] { min-width: 0 !important; flex: 1 1 0 !important; width: 0 !important; }
++  .st-key-mobile_toolbar [data-testid="column"]:first-child, .st-key-mobile_toolbar [data-testid="stColumn"]:first-child { flex-grow: 1.25 !important; }
++  .st-key-mobile_toolbar [data-baseweb="select"] *, .st-key-mobile_toolbar [data-baseweb="input"] input { font-size: 15px !important; font-weight: 650 !important; }
++  .st-key-mobile_toolbar [data-testid="stPopover"] button { min-height: 36px !important; border-radius: var(--r-sm); font-size: .8rem !important; color: var(--muted); background: transparent; border-style: dashed; }
++
++  /* fields: visible box, 16px text (no iOS zoom), focus ring */
++  [data-testid="stTextInputRootElement"], [data-testid="stNumberInputContainer"], [data-baseweb="textarea"],
++  .stSelectbox .react-aria-ComboBox > div[role], .stMultiSelect .react-aria-ComboBox > div[role],
++  .stSelectbox [data-baseweb="select"] > div:first-child, .stMultiSelect [data-baseweb="select"] > div:first-child {
++    min-height: 46px; background-color: var(--field) !important; border: 1px solid var(--line) !important; border-radius: var(--r-md) !important; }
++  [data-testid="stTextInputRootElement"]:focus-within, [data-testid="stNumberInputContainer"]:focus-within,
++  .stSelectbox .react-aria-ComboBox > div[role]:focus-within, [data-baseweb="select"] > div:focus-within { border-color: var(--accent) !important; box-shadow: var(--focus-ring); }
++  [data-testid="stTextInputRootElement"] [data-baseweb="base-input"], [data-testid="stNumberInputContainer"] [data-baseweb="base-input"],
++  [data-testid="stTextInputRootElement"] > div, [data-testid="stNumberInputContainer"] > div { background: transparent !important; border: 0 !important; }
++  .st-key-mobile_toolbar .stSelectbox .react-aria-ComboBox > div[role], .st-key-mobile_toolbar [data-testid="stDateInputField"] {
++    min-height: var(--tap); background-color: var(--bg) !important; border: 1px solid var(--line) !important; border-radius: var(--r-md) !important; }
++  .st-key-mobile_toolbar [data-testid="stDateInputField"] [data-baseweb="input"], .st-key-mobile_toolbar [data-testid="stDateInputField"] [data-baseweb="base-input"] { border: 0 !important; background: transparent !important; }
++  [data-testid="stDateInputField"] { overflow: hidden; }
+   [data-baseweb="input"] input, [data-baseweb="textarea"] textarea, [data-baseweb="select"] * { font-size: 16px !important; }
+   [data-baseweb="input"] input { font-weight: 650; }
+-  [data-testid="stTextInputRootElement"] [data-baseweb="base-input"], [data-testid="stNumberInputContainer"] [data-baseweb="base-input"], [data-testid="stTextInputRootElement"] > div, [data-testid="stNumberInputContainer"] > div { background: transparent !important; border: 0 !important; }
+-  .st-key-mobile_toolbar .stMarkdown, .st-key-mobile_toolbar .stElementContainer:has(.mobile-brand) { height: auto !important; min-height: 22px; overflow: visible; }
+-  [data-testid="stNumberInput"] button { min-width: 44px !important; min-height: 44px !important; }
++  [data-testid="stNumberInput"] button { min-width: var(--tap) !important; min-height: var(--tap) !important; }
+   [data-baseweb="menu"] li, [role="option"] { min-height: 46px !important; display: flex !important; align-items: center !important; }
+-  /* buttons: full width, thumb height */
+-  .stButton button, .stDownloadButton button, [data-testid="stFormSubmitButton"] button { width: 100%; min-height: 50px; border-radius: 13px; font-size: 15px !important; }
+-  .stButton button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] { box-shadow: 0 8px 18px -10px var(--terracotta); }
++
++  /* buttons */
++  .stButton, .stDownloadButton, [data-testid="stFormSubmitButton"] { width: 100% !important; }
++  .stButton button, .stDownloadButton button, [data-testid="stFormSubmitButton"] button { width: 100%; min-height: var(--tap-lg); border-radius: 13px; font-size: 15px !important; }
++  .stButton button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] { box-shadow: var(--shadow-accent); }
+   .stButton button:active, .stDownloadButton button:active, [data-testid="stFormSubmitButton"] button:active { transform: scale(.985); }
+-  /* cards & blocks */
+-  [data-testid="stExpander"] { border-radius: 16px; }
++
++  /* blocks */
++  [data-testid="stExpander"] { border-radius: var(--r-xl); }
+   [data-testid="stExpander"] summary { min-height: 52px; }
+-  [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 16px !important; }
+-  [data-testid="stDataFrame"], [data-testid="stDataEditor"] { border: 1px solid var(--warm-border); border-radius: 14px; overflow: hidden; }
+-  .st-key-holdings_edit_mode [role="radiogroup"] { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 3px; background: #efe9e1; border-radius: 12px; }
+-  .st-key-holdings_edit_mode [role="radiogroup"] label { justify-content: center; border: 0 !important; border-radius: 10px !important; background: transparent !important; min-height: 40px; }
+-  .st-key-holdings_edit_mode [role="radiogroup"] label:has(input:checked) { background: #fff !important; box-shadow: 0 1px 2px rgba(0,0,0,.08); color: var(--warm-ink); }
++  [data-testid="stVerticalBlockBorderWrapper"] { border-radius: var(--r-xl) !important; }
++  [data-baseweb="tab-list"] { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
++  [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
++  .asset-card-list { grid-template-columns: 1fr; }
++  .holding-head { margin-top: .8rem; } .holding-head span { font-size: var(--fs-xs); }
++  .rule-preview { font-size: .95rem; padding: var(--sp-4) 1.05rem; border-radius: var(--r-xl); }
++
++  /* segmented control: 계좌별 입력 / 전체 표 */
++  .st-key-holdings_edit_mode [role="radiogroup"] { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 3px; background: var(--surface-sunk); border-radius: var(--r-md); }
++  .st-key-holdings_edit_mode [role="radiogroup"] label { justify-content: center; border: 0 !important; border-radius: var(--r-sm) !important; background: transparent !important; min-height: 40px; }
++  .st-key-holdings_edit_mode [role="radiogroup"] label:has(input:checked) { background: var(--field) !important; box-shadow: var(--shadow-1); color: var(--ink); }
+   .st-key-holdings_edit_mode [role="radiogroup"] label > div:first-child { display: none; }
+-  .holding-head { margin-top: .8rem; }
+-  .holding-head span { font-size: .76rem; }
+-  .rule-preview { font-size: .95rem; padding: 1rem 1.05rem; border-radius: 16px; }
+-  [data-testid="stCaptionContainer"] p { font-size: .82rem !important; }
+-}
+-@media (max-width: 800px) {
+-  .st-key-mobile_toolbar [data-testid="stDateInputField"] [data-baseweb="input"], .st-key-mobile_toolbar [data-testid="stDateInputField"] [data-baseweb="base-input"] { border: 0 !important; background: transparent !important; }
+-  [data-testid="stDateInputField"] { overflow: hidden; }
+-}
+-@media (max-width: 800px) {
+-  .stSelectbox [data-baseweb="select"] > div:first-child, .stMultiSelect [data-baseweb="select"] > div:first-child { border: 1px solid var(--warm-border) !important; background-color: #fff !important; border-radius: 12px !important; min-height: 46px; }
+-}
+-@media (max-width: 800px) {
+-  /* Streamlit 1.5x+ select box (react-aria / baseweb) */
+-  .stSelectbox .react-aria-ComboBox > div[role], .stMultiSelect .react-aria-ComboBox > div[role],
+-  .stSelectbox [data-baseweb="select"] > div:first-child, .stMultiSelect [data-baseweb="select"] > div:first-child { border: 1px solid var(--warm-border) !important; background-color: #fff !important; border-radius: 12px !important; min-height: 46px; }
+-  .stSelectbox .react-aria-ComboBox > div[role]:focus-within { border-color: var(--terracotta) !important; box-shadow: 0 0 0 3px var(--terracotta-soft); }
+-  .st-key-mobile_toolbar .stSelectbox .react-aria-ComboBox > div[role], .st-key-mobile_toolbar [data-testid="stDateInputField"] { background-color: var(--warm-bg) !important; }
+-}
+-@media (max-width: 800px) {
+-  /* target-status filter: one scrollable row of compact chips */
++
++  /* filter chips: one scrollable row */
+   .st-key-order_target_filter [role="radiogroup"] { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+   .st-key-order_target_filter [role="radiogroup"]::-webkit-scrollbar { display: none; }
+   .st-key-order_target_filter [role="radiogroup"] label { flex: 0 0 auto; min-height: 40px; padding: .3rem .8rem; }
+   .st-key-order_target_filter [role="radiogroup"] label > div:first-child { display: none; }
+-  [data-testid="stPlotlyChart"] { background: var(--warm-surface); border: 1px solid var(--warm-border); border-radius: 14px; padding: .5rem .6rem .2rem; }
+-  /* horizontal radios (집계 기준 등) as segmented chips */
+-  .stRadio [role="radiogroup"][aria-orientation="horizontal"], .stRadio div[role="radiogroup"] { gap: .35rem; }
++  .st-key-order_target_filter [role="radiogroup"] label [data-testid="stMarkdownContainer"] { white-space: nowrap !important; display: inline; }
+ }
+-@media (max-width: 800px) {
+-  .st-key-order_target_filter [role="radiogroup"] label p, .st-key-order_target_filter [role="radiogroup"] label [data-testid="stMarkdownContainer"] { white-space: nowrap !important; display: inline; }
+-  .st-key-order_target_filter [role="radiogroup"] label [data-testid="stMarkdownContainer"] p br { display: none; }
++@media (max-width: 460px) {
++  .summary-hero strong { font-size: 1.72rem; }
++  .summary-mini strong { font-size: 1.04rem; }
++  .order-row { gap: .45rem; padding: .65rem .6rem; }
++  .order-amount strong { font-size: .84rem; }
++}
++@media (prefers-reduced-motion: reduce) {
++  .stButton button, .stDownloadButton button, [data-testid="stFormSubmitButton"] button { transition: none; }
++  .stButton button:active, .stDownloadButton button:active { transform: none; }
+ }
+diff --git a/streamlit_app/ui.py b/streamlit_app/ui.py
+index bdff036..898052e 100644
+--- a/streamlit_app/ui.py
++++ b/streamlit_app/ui.py
+@@ -19,10 +19,28 @@ PERCENT_COLUMNS = {
+     '목표대비괴리(%p)', '괴리(%p)', '허용괴리(%p)', '증감률(%)',
+ }
+ 
++# Python mirror of the design tokens in theme.css (:root). Keep the two in sync.
++TOKENS = {
++    'surface': '#fffdfa', 'ink': '#292d2a', 'muted': '#827d76', 'line': '#e8dfd5',
++    'accent': '#b95e3d', 'sage': '#477665', 'deep': '#263d33',
++    'under': '#276893', 'under_soft': '#e6f0f8',
++    'met': '#387762', 'met_soft': '#e3f0e9',
++    'over': '#ad5146', 'over_soft': '#fae8e3',
++}
++FONT_STACK = 'Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif'
++# Categorical chart palette: brand first, then semantic hues, then neutrals.
++CHART_COLORS = [TOKENS['accent'], TOKENS['sage'], TOKENS['under'], '#c9a227', '#8a6f9e', '#9aa39b', '#d68a6a']
++CHART_LAYOUT = dict(margin=dict(l=0, r=44, t=8, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
++                    font=dict(family=FONT_STACK, size=13, color=TOKENS['ink']), xaxis_title=None, yaxis_title=None,
++                    xaxis=dict(gridcolor=TOKENS['line'], zerolinecolor=TOKENS['line']),
++                    yaxis=dict(gridcolor=TOKENS['line'], zerolinecolor=TOKENS['line']),
++                    hoverlabel=dict(bgcolor=TOKENS['surface'], bordercolor=TOKENS['line'], font_family=FONT_STACK))
++CHART_CONFIG = {'displayModeBar': False, 'responsive': True}
++
+ TARGET_STATUS_STYLES = {
+-    '미달': ('#e6f0f8', '#276893'),
+-    '충족': ('#e3f0e9', '#387762'),
+-    '초과': ('#fae8e3', '#ad5146'),
++    '미달': (TOKENS['under_soft'], TOKENS['under']),
++    '충족': (TOKENS['met_soft'], TOKENS['met']),
++    '초과': (TOKENS['over_soft'], TOKENS['over']),
+ }
+ 
+ 
+@@ -94,11 +112,11 @@ def allocation_status_frame(plan, strategies):
+ def style_allocation_rows(frame):
+     """Apply calm, accessible status colors to allocation rows."""
+     def row_style(row):
+-        background, _ = TARGET_STATUS_STYLES.get(row.get('목표상태'), ('#fffdfa', '#292d2a'))
++        background, _ = TARGET_STATUS_STYLES.get(row.get('목표상태'), (TOKENS['surface'], TOKENS['ink']))
+         return [f'background-color: {background}' for _ in row.index]
+ 
+     def status_style(value):
+-        background, foreground = TARGET_STATUS_STYLES.get(value, ('#fffdfa', '#292d2a'))
++        background, foreground = TARGET_STATUS_STYLES.get(value, (TOKENS['surface'], TOKENS['ink']))
+         return f'background-color: {background}; color: {foreground}; font-weight: 750'
+ 
+     styled = frame.style.apply(row_style, axis=1)
+diff --git a/tests/test_design_tokens.py b/tests/test_design_tokens.py
+new file mode 100644
+index 0000000..6c9249a
+--- /dev/null
++++ b/tests/test_design_tokens.py
+@@ -0,0 +1,31 @@
++"""Design tokens: CSS :root and the Python mirror must agree; components use tokens."""
++import re
++import unittest
++from pathlib import Path
++from streamlit_app.ui import TOKENS, TARGET_STATUS_STYLES, CHART_COLORS
++
++CSS = (Path(__file__).resolve().parents[1] / 'streamlit_app' / 'theme.css').read_text(encoding='utf-8')
++ROOT = CSS[CSS.index(':root'):CSS.index('}', CSS.index(':root'))]
++CSS_TOKENS = dict(re.findall(r'--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})', ROOT))
++
++
++class DesignTokenTests(unittest.TestCase):
++    def test_python_mirror_matches_css(self):
++        for key, value in TOKENS.items():
++            self.assertEqual(CSS_TOKENS.get(key.replace('_', '-')), value, key)
++
++    def test_status_styles_use_semantic_tokens(self):
++        self.assertEqual(TARGET_STATUS_STYLES['미달'], (TOKENS['under_soft'], TOKENS['under']))
++        self.assertEqual(TARGET_STATUS_STYLES['초과'], (TOKENS['over_soft'], TOKENS['over']))
++        self.assertEqual(CHART_COLORS[0], TOKENS['accent'])
++
++    def test_components_reference_tokens_not_raw_hex(self):
++        body = CSS[CSS.index('}', CSS.index(':root')):]
++        self.assertEqual(re.findall(r'#[0-9a-fA-F]{6}', body), [])
++
++    def test_single_mobile_breakpoint_block(self):
++        self.assertEqual(CSS.count('@media (max-width: 800px)'), 1)
++
++
++if __name__ == '__main__':
++    unittest.main()
+-- 
+2.47.3
+
